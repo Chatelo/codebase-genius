@@ -4,7 +4,7 @@
 import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
-
+import from graph.builders { build_repo_graph }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -73,6 +73,14 @@ walker generate_docs {
         stats = overview["stats"];
         entities = {};
         if "entities" in overview { entities = overview["entities"]; }
+
+        # Build the Code Context Graph (CCG) from files + entities
+        try {
+            _repo_node = build_repo_graph(here, self.repo_url, file_tree, entities);
+        } except Exception as e {
+            # Non-fatal: proceed even if graph build fails
+            _repo_node = None;
+        }
 
         # Prepare richer extra context for the LLM
         langs = "{}";

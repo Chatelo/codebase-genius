@@ -33,14 +33,7 @@ node CodeFile {
     has is_test: bool = False;
     has is_example: bool = False;
     has is_doc: bool = False;
-    
-    can get_extension -> str {
-        parts = self.path.split('.');
-        if len(parts) > 1 {
-            return parts[-1];
-        }
-        return "";
-    }
+
 }
 
 #* Function node: represents a function or method *#
