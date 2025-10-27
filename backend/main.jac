@@ -44,20 +44,34 @@ walker generate_docs {
     has include_diagrams: bool = False;
     has exclude_dirs: list = [];
 
+    has exclude_globs: list = [];
+    has include_exts: list = [];
+    has max_files: int = 0;
+    has max_file_size_bytes: int = 0;
+    has top_n: int = 10;
+
     obj __specs__ {
         static has auth: bool = False;
     }
 
     can process with `root entry {
         # Build an overview via Supervisor helpers (stub unless depth=="deep")
-        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs);
+        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.max_files, self.max_file_size_bytes, self.top_n);
         file_tree = overview["file_tree"];
         stats = overview["stats"];
         entities = {};
         if "entities" in overview { entities = overview["entities"]; }
 
-        # Prepare extra context for the LLM
-        extra_context = f"Files={stats['files']}, Jac={stats['jac_files']}, Docs={stats['docs']}. Diagrams={self.include_diagrams}.";
+        # Prepare richer extra context for the LLM
+        langs = "{}";
+        if "languages" in stats { langs = str(stats["languages"]); }
+        tdirs = "{}";
+        if "top_dirs_code" in stats { tdirs = str(stats["top_dirs_code"]); }
+        t_code = 0;
+        if "tests_code_files" in stats { t_code = stats["tests_code_files"]; }
+        e_code = 0;
+        if "examples_code_files" in stats { e_code = stats["examples_code_files"]; }
+        extra_context = f"Files={stats['files']}, Code={stats['code_files']}, Python={stats['python_files']}, Docs={stats['docs']}, Tests={stats['tests_files']}(code={t_code}), Examples={stats['examples_files']}(code={e_code}), Languages={langs}, TopDirsByCode={tdirs}, TopN={self.top_n}. Diagrams={self.include_diagrams}.";
 
         # Generate documentation (stub or LLM)
         doc = "";
