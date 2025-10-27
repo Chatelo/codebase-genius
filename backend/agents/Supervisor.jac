@@ -10,11 +10,11 @@ import from utils.ts_analyze { extract_entities }
 """Build an overview by coordinating RepoMapper/CodeAnalyzer.
 If depth == "deep", perform real mapping and analysis. Otherwise, return stubbed data.
 """
-def build_overview(repo_url: str, depth: str = "standard") -> dict {
+def build_overview(repo_url: str, depth: str = "standard", exclude_dirs: list = []) -> dict {
     if depth == "deep" {
         try {
             repo_path = clone_or_open_repo(repo_url);
-            files = scan_repo_tree(repo_path);
+            files = scan_repo_tree(repo_path, exclude_dirs);
             stats = basic_stats(files);
             entities = extract_entities(repo_path, files);
             return {
@@ -44,7 +44,7 @@ walker Supervisor {
     has depth: str = "standard";
 
     can orchestrate with `root entry {
-        overview = build_overview(self.repo_url, self.depth);
+        overview = build_overview(self.repo_url, self.depth, []);
         report overview;
     }
 }

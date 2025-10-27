@@ -42,6 +42,7 @@ walker generate_docs {
     has depth: str = "standard";
     has use_llm: bool = False;
     has include_diagrams: bool = False;
+    has exclude_dirs: list = [];
 
     obj __specs__ {
         static has auth: bool = False;
@@ -49,7 +50,7 @@ walker generate_docs {
 
     can process with `root entry {
         # Build an overview via Supervisor helpers (stub unless depth=="deep")
-        overview = build_overview(self.repo_url, self.depth);
+        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs);
         file_tree = overview["file_tree"];
         stats = overview["stats"];
         entities = {};

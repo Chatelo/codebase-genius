@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 _CODE_EXTS = {
     ".py": "python",
@@ -22,6 +22,32 @@ _CODE_EXTS = {
 
 _DOC_EXTS = {".md": "md", ".rst": "rst"}
 
+# Common directories to exclude from scanning (non-source, caches, VCS, envs)
+EXCLUDE_DIRS = {
+    ".git",
+    ".github",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".cache",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".tox",
+    "dist",
+    "build",
+    "site-packages",
+    ".idea",
+    ".vscode",
+    ".eggs",
+    ".svn",
+    ".hg",
+    "coverage",
+    "htmlcov",
+    "target",
+}
+
+
 
 def _classify(path: Path) -> Dict:
     ext = path.suffix.lower()
@@ -32,10 +58,15 @@ def _classify(path: Path) -> Dict:
     return {"path": str(path), "type": "Other", "language": ext.lstrip(".")}
 
 
-def scan_repo_tree(root_path: str) -> List[Dict]:
+def scan_repo_tree(root_path: str, exclude_dirs: Optional[List[str]] = None) -> List[Dict]:
     root = Path(root_path).resolve()
     out: List[Dict] = []
-    for dirpath, _dirnames, filenames in os.walk(root):
+    final_excludes = set(EXCLUDE_DIRS)
+    if exclude_dirs:
+        final_excludes.update(exclude_dirs)
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+        # Exclude common non-source directories (by directory name)
+        dirnames[:] = [d for d in dirnames if d not in final_excludes]
         for fname in filenames:
             p = Path(dirpath) / fname
             rel = p.relative_to(root)
