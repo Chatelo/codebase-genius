@@ -214,7 +214,6 @@ def copy_mmd_button(label: str, mmd: str, key: str):
         </script>
         """,
         height=45,
-        key=f"copy-{key}"
     )
 
 
@@ -348,6 +347,19 @@ def main():
             st.markdown(f'<div class="error-box">❌ <strong>Error:</strong> {result.get("message", "Unknown error")}</div>', unsafe_allow_html=True)
         elif result.get("status") == "success":
             st.markdown('<div class="success-box">✅ <strong>Success!</strong> Documentation generated successfully.</div>', unsafe_allow_html=True)
+            # Saved paths (if backend saved to disk)
+            saved = result.get("saved", {})
+            if isinstance(saved, dict) and saved:
+                st.subheader("💾 Saved to Disk")
+                if saved.get("documentation_path"):
+                    st.text(f"Documentation: {saved['documentation_path']}")
+                diags_saved = saved.get("diagrams_paths") or {}
+                if diags_saved:
+                    st.text("Diagrams:")
+                    for k, v in diags_saved.items():
+                        st.text(f"  - {k}: {v}")
+                if saved.get("statistics_path"):
+                    st.text(f"Statistics: {saved['statistics_path']}")
 
             # Create tabs for different views (added 📈 Diagrams)
             tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data"])

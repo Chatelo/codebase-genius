@@ -7,7 +7,7 @@ _CODE_EXTS = {
     ".py": "python",
     ".js": "javascript",
     ".ts": "typescript",
-    ".tsx": "tsx",
+    ".tsx": "jsx",
     ".jsx": "jsx",
     ".java": "java",
     ".go": "go",
@@ -18,7 +18,7 @@ _CODE_EXTS = {
     ".cpp": "cpp",
     ".c": "c",
     ".h": "c-header",
-    ".jac": "jac",
+    ".jac": "jaclang",
 }
 
 _DOC_EXTS = {".md": "md", ".rst": "rst"}

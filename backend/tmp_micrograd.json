@@ -1,9 +1,0 @@
-{
-  "repo_url": "https://github.com/karpathy/micrograd",
-  "depth": "deep",
-  "use_llm": false,
-  "include_diagrams": false,
-  "include_exts": [".py", ".md"],
-  "max_files": 400
-}
-
