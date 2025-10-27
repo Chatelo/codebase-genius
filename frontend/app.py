@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import json
 from typing import Dict, Any, List
+import streamlit.components.v1 as components
+
 
 # Page configuration
 st.set_page_config(
@@ -159,6 +161,35 @@ def render_file_tree(file_tree: List[Dict[str, Any]]):
                 file_name = path.split("/")[-1]
                 st.text(f"📄 {file_name} | {lang} | {format_file_size(size)} | {lines:,} lines")
 
+# Mermaid rendering helper (no extra package; embeds mermaid.js)
+def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
+    st.markdown(f"#### {title}")
+    if not isinstance(diagram, str) or not diagram.strip():
+        st.info("No diagram available.")
+        return
+    components.html(
+        f"""
+        <div>
+          <div class=\"mermaid\">
+{diagram}
+          </div>
+        </div>
+        <script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>
+        <script>
+          if (window.mermaid) {{
+            mermaid.initialize({{ startOnLoad: true, securityLevel: 'loose' }});
+            mermaid.contentLoaded();
+          }} else {{
+            document.addEventListener('DOMContentLoaded', function () {{
+              mermaid.initialize({{ startOnLoad: true, securityLevel: 'loose' }});
+            }});
+          }}
+        </script>
+        """,
+        height=height,
+    )
+
+
 def main():
     # Header
     st.markdown('<h1 class="main-header">🧠 Codebase Genius</h1>', unsafe_allow_html=True)
@@ -186,7 +217,7 @@ def main():
         # LLM settings
         st.subheader("🤖 AI Settings")
         use_llm = st.checkbox("Enable AI Documentation", value=True, help="Use LLM to generate comprehensive documentation")
-        include_diagrams = st.checkbox("Include Diagrams", value=False, help="Generate architecture diagrams (future feature)")
+        include_diagrams = st.checkbox("Include Diagrams", value=False, help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)")
         top_n = st.slider("Top N Items", min_value=3, max_value=20, value=10, help="Number of top items to track")
 
         # Filtering options
@@ -258,14 +289,15 @@ def main():
         with st.spinner("🔄 Analyzing repository... This may take a few minutes for large repos."):
             result = call_generate_docs(config)
 
+
         # Display results
         if result.get("status") == "error":
             st.markdown(f'<div class="error-box">❌ <strong>Error:</strong> {result.get("message", "Unknown error")}</div>', unsafe_allow_html=True)
         elif result.get("status") == "success":
             st.markdown('<div class="success-box">✅ <strong>Success!</strong> Documentation generated successfully.</div>', unsafe_allow_html=True)
 
-            # Create tabs for different views
-            tab1, tab2, tab3, tab4 = st.tabs(["📖 Documentation", "📊 Statistics", "🌲 File Tree", "🔧 Raw Data"])
+            # Create tabs for different views (added 📈 Diagrams)
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data"])
 
             with tab1:
                 st.subheader("Generated Documentation")
@@ -286,13 +318,45 @@ def main():
                 else:
                     st.info("No statistics available.")
 
+
             with tab3:
+                st.subheader("Mermaid Diagrams")
+                diags = result.get("diagrams", {})
+                if not diags:
+                    st.info("No diagrams found in response. Enable 'Include Diagrams' in the sidebar and re-run.")
+                else:
+                    if diags.get("call_graph"):
+                        render_mermaid_diagram("Call Graph", diags["call_graph"], height=600)
+                        st.download_button(
+                            label="\u2B07\uFE0F Download Call Graph (.mmd)",
+                            data=diags["call_graph"],
+                            file_name="call_graph.mmd",
+                            mime="text/plain",
+                        )
+                    if diags.get("class_hierarchy"):
+                        render_mermaid_diagram("Class Hierarchy", diags["class_hierarchy"], height=600)
+                        st.download_button(
+                            label="\u2B07\uFE0F Download Class Hierarchy (.mmd)",
+                            data=diags["class_hierarchy"],
+                            file_name="class_hierarchy.mmd",
+                            mime="text/plain",
+                        )
+                    if diags.get("module_graph"):
+                        render_mermaid_diagram("Module Graph", diags["module_graph"], height=500)
+                        st.download_button(
+                            label="\u2B07\uFE0F Download Module Graph (.mmd)",
+                            data=diags["module_graph"],
+                            file_name="module_graph.mmd",
+                            mime="text/plain",
+                        )
+
+            with tab4:
                 if "file_tree" in result:
                     render_file_tree(result["file_tree"])
                 else:
                     st.info("No file tree available.")
 
-            with tab4:
+            with tab5:
                 st.subheader("Raw API Response")
                 st.json(result)
         else:
@@ -316,6 +380,8 @@ def main():
 
         - `https://github.com/karpathy/micrograd` - Small educational ML library
         - `https://github.com/pallets/flask` - Popular Python web framework
+
+
         - `https://github.com/fastapi/fastapi` - Modern Python API framework
         """)
 
