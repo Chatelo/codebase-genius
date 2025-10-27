@@ -378,7 +378,7 @@ def main():
                 st.download_button(
                     label="⬇️ Download Documentation (Markdown)",
                     data=documentation,
-                    file_name=f"{repo_url.split('/')[-1]}_docs.md",
+                    file_name=f"{repo_url.split('/')[-1]}_documentation.md",
                     mime="text/markdown"
                 )
 

@@ -6,6 +6,7 @@ import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
 import from graph.builders { build_repo_graph, EdgeBuilder }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
+import from utils.output { save_results_to_disk }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -48,6 +49,8 @@ walker generate_docs {
     has diagram_max_edges_class: int = 400;
     has diagram_max_edges_module: int = 400;
     has exclude_dirs: list = [];
+    has save_locally: bool = True;
+    has outputs_dir: str = "outputs";
 
     #* Sensible defaults: filter out binaries/notebooks and focus on code+docs *#
     has exclude_globs: list = [
@@ -212,6 +215,14 @@ walker generate_docs {
             } except Exception as e { diagrams = {}; }
         }
 
+        # Save to disk if enabled
+        saved_paths = {};
+        if self.save_locally {
+            try {
+                saved_paths = save_results_to_disk(self.repo_url, doc, diagrams, stats, self.outputs_dir);
+            } except Exception as e { saved_paths = {}; }
+        }
+
         report {
             "status": "success",
             "repo_url": self.repo_url,
@@ -222,7 +233,8 @@ walker generate_docs {
             "entities": entities,
             "ccg": ccg,
             "documentation": doc,
-            "diagrams": diagrams
+            "diagrams": diagrams,
+            "saved": saved_paths
         };
     }
 }
