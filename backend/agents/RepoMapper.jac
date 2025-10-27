@@ -1,8 +1,8 @@
 # Maps repository structure into a graph (skeleton)
 
-"""Return a tiny, static file tree for smoke testing and docs generation.
-Each entry is a dict with keys: path, type, language.
-"""
+#* Return a tiny, static file tree for smoke testing and docs generation.
+# Each entry is a dict with keys: path, type, language.
+*#
 def sample_file_tree() -> list {
     return [
         {"path": "backend/main.jac", "type": "CodeFile", "language": "jac"},

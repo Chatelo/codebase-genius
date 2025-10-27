@@ -1,8 +1,8 @@
 # Analyzes code semantics (skeleton)
 
-"""Compute basic stats from a file_tree list.
-Returns dict with counts: files, jac_files, docs, plus code_files, python_files, languages and doc_kinds breakdowns.
-"""
+#* Compute basic stats from a file_tree list.
+# Returns dict with counts: files, jac_files, docs, plus code_files, python_files, languages and doc_kinds breakdowns.
+*#
 def basic_stats(file_tree: list, top_n: int = 10) -> dict {
     total = 0; jac_files = 0; docs = 0; code_files = 0; python_files = 0;
     languages = {}; doc_kinds = {}; top_dirs = {}; tests_files = 0; examples_files = 0;

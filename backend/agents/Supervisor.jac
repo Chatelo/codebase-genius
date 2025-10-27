@@ -16,6 +16,8 @@ def build_overview(
     exclude_dirs: list = [],
     exclude_globs: list = [],
     include_exts: list = [],
+    include_globs: list = [],
+    include_paths: list = [],
     max_files: int = 0,
     max_file_size_bytes: int = 0,
     top_n: int = 10,
@@ -28,6 +30,8 @@ def build_overview(
                 exclude_dirs,
                 exclude_globs,
                 include_exts,
+                include_globs,
+                include_paths,
                 max_files,
                 max_file_size_bytes,
                 True,
@@ -62,7 +66,7 @@ walker Supervisor {
     has depth: str = "standard";
 
     can orchestrate with `root entry {
-        overview = build_overview(self.repo_url, self.depth, []);
+        overview = build_overview(self.repo_url, self.depth, [], [], [], [], 0, 0, 10);
         report overview;
     }
 }

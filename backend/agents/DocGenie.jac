@@ -4,13 +4,13 @@ import from byllm.llm { Model }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
-"""Generate a high-level repository overview given minimal inputs.
-Inputs:
-- repo_url: the repository URL or identifier
-- depth: 'fast', 'standard', or 'deep'
-- extra_context: additional hints or extracted signals
-Return: concise markdown overview
-"""
+#* Generate a high-level repository overview given minimal inputs.
+# Inputs:
+# - repo_url: the repository URL or identifier
+# - depth: 'fast', 'standard', or 'deep'
+# - extra_context: additional hints or extracted signals
+# Return: concise markdown overview
+*#
 def docgen_summarize(repo_url: str, depth: str = "standard", extra_context: str = "") -> str by llm(
     method="Reason",
     temperature=0.3

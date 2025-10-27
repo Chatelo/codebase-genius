@@ -9,7 +9,7 @@ import from agents.Supervisor { build_overview }
 glob llm = Model(model_name="gpt-4o-mini");
 
 # AI function (not a walker ability) powered by byLLM
-"""Generate a friendly greeting for the given name."""
+#* Generate a friendly greeting for the given name. *#
 def make_greeting(name: str) -> str by llm(method="Reason");
 
 walker api_hello {
@@ -44,8 +44,20 @@ walker generate_docs {
     has include_diagrams: bool = False;
     has exclude_dirs: list = [];
 
-    has exclude_globs: list = [];
-    has include_exts: list = [];
+    #* Sensible defaults: filter out binaries/notebooks and focus on code+docs *#
+    has exclude_globs: list = [
+        "**/*.ipynb", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.svg",
+        "**/*.ico", "**/*.pdf", "**/*.zip", "**/*.tar", "**/*.gz", "**/*.xz",
+        "**/*.7z", "**/*.rar", "**/*.exe", "**/*.dll", "**/*.so", "**/*.dylib",
+        "**/*.class", "**/*.jar", "**/*.min.js", "**/*.lock", "**/*.bin",
+        "**/.DS_Store", "**/.coverage*", "**/*.map"
+    ];
+    has include_exts: list = [
+        ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs", ".rb",
+        ".php", ".cs", ".cpp", ".c", ".h", ".jac", ".md", ".rst"
+    ];
+    has include_globs: list = [];
+    has include_paths: list = [];
     has max_files: int = 0;
     has max_file_size_bytes: int = 0;
     has top_n: int = 10;
@@ -56,7 +68,7 @@ walker generate_docs {
 
     can process with `root entry {
         # Build an overview via Supervisor helpers (stub unless depth=="deep")
-        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.max_files, self.max_file_size_bytes, self.top_n);
+        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.include_globs, self.include_paths, self.max_files, self.max_file_size_bytes, self.top_n);
         file_tree = overview["file_tree"];
         stats = overview["stats"];
         entities = {};
@@ -73,10 +85,58 @@ walker generate_docs {
         if "examples_code_files" in stats { e_code = stats["examples_code_files"]; }
         extra_context = f"Files={stats['files']}, Code={stats['code_files']}, Python={stats['python_files']}, Docs={stats['docs']}, Tests={stats['tests_files']}(code={t_code}), Examples={stats['examples_files']}(code={e_code}), Languages={langs}, TopDirsByCode={tdirs}, TopN={self.top_n}. Diagrams={self.include_diagrams}.";
 
+        # Build Top Files (by lines) summary
+        top_files_str = "";
+        if "top_files_by_lines" in stats {
+            i = 0;
+            for entry in stats["top_files_by_lines"] {
+                if i >= self.top_n { break; }
+                pth = ""; ln = 0;
+                if "path" in entry { pth = entry["path"]; }
+                if "lines" in entry { ln = entry["lines"]; }
+                if top_files_str != "" { top_files_str += ", "; }
+                top_files_str += f"{pth} ({ln} loc)";
+                i += 1;
+            }
+        }
+
+        # Build API surface summary (classes + total functions)
+        api_surface = "";
+        if ("files" in entities) {
+            classes = [];
+            funcs_total = 0;
+            for f in entities["files"] {
+                if ("classes" in f) {
+                    for cname in f["classes"] {
+                        # Dedup class names
+                        is_dup = False; k = 0;
+                        while k < len(classes) {
+                            if classes[k] == cname { is_dup = True; break; }
+                            k += 1;
+                        }
+                        if not is_dup { classes.append(cname); }
+                    }
+                }
+                if ("functions" in f) {
+                    funcs_total += len(f["functions"]);
+                }
+            }
+            # Take top N class names
+            cls_str = ""; j = 0;
+            for cname in classes {
+                if j >= self.top_n { break; }
+                if cls_str != "" { cls_str += ", "; }
+                cls_str += cname;
+                j += 1;
+            }
+            api_surface = f"Classes: [{cls_str}]; Total functions: {funcs_total}";
+        }
+
+
         # Generate documentation (stub or LLM)
         doc = "";
         if self.use_llm {
-            prompt = f"Generate high-level documentation for repo: {self.repo_url}. Depth: {self.depth}. " + extra_context;
+            prompt = f"Generate high-level documentation for repo: {self.repo_url}. Depth: {self.depth}. " + extra_context + f" TopFilesByLines: [{top_files_str}]. API: {api_surface}.";
             doc = docgen_summarize(self.repo_url, self.depth, prompt);
         } else {
             doc = f"[Stub] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
