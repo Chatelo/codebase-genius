@@ -18,14 +18,17 @@ def _label(mod: str, name: str) -> str:
     return name
 
 
-def make_call_graph_mermaid(entities: Dict) -> str:
+def make_call_graph_mermaid(entities: Dict, max_edges: int = 400, filter_tests: bool = False) -> str:
     """Build a Mermaid flowchart for the function call graph.
     Collapses duplicate edges and prefixes names with module for clarity.
     """
     func_module, class_module = _build_maps(entities)
     lines: List[str] = ["flowchart LR"]
     edges = set()
-    max_edges = 400
+
+    def is_test_label(label: str) -> bool:
+        l = (label or "").lower()
+        return "test" in l or "tests" in l
 
     for f in entities.get("files", []):
         mod = f.get("module", "")
@@ -37,23 +40,25 @@ def make_call_graph_mermaid(entities: Dict) -> str:
             src = _label(mod, caller)
             callee_mod = func_module.get(callee) or class_module.get(callee) or ""
             dst = _label(callee_mod, callee)
+            if filter_tests and (is_test_label(src) or is_test_label(dst)):
+                continue
             edge = f"  \"{src}\" --> \"{dst}\""
             if edge not in edges:
                 lines.append(edge)
                 edges.add(edge)
                 if len(edges) >= max_edges:
-                    break
-        if len(edges) >= max_edges:
-            break
-
+                    return "\n".join(lines)
     return "\n".join(lines)
 
 
-def make_class_hierarchy_mermaid(entities: Dict) -> str:
+def make_class_hierarchy_mermaid(entities: Dict, max_edges: int = 400, filter_tests: bool = False) -> str:
     """Build a Mermaid diagram for class inheritance."""
     lines: List[str] = ["flowchart TB"]
     edges = set()
-    max_edges = 400
+
+    def is_test_label(label: str) -> bool:
+        l = (label or "").lower()
+        return "test" in l or "tests" in l
 
     for f in entities.get("files", []):
         for inh in f.get("inherits", []):
@@ -61,23 +66,25 @@ def make_class_hierarchy_mermaid(entities: Dict) -> str:
             base = inh.get("base")
             if not sub or not base:
                 continue
+            if filter_tests and (is_test_label(sub) or is_test_label(base)):
+                continue
             edge = f"  \"{sub}\" -->|extends| \"{base}\""
             if edge not in edges:
                 lines.append(edge)
                 edges.add(edge)
                 if len(edges) >= max_edges:
-                    break
-        if len(edges) >= max_edges:
-            break
-
+                    return "\n".join(lines)
     return "\n".join(lines)
 
 
-def make_module_graph_mermaid(entities: Dict) -> str:
+def make_module_graph_mermaid(entities: Dict, max_edges: int = 400, filter_tests: bool = False) -> str:
     """Build a Mermaid diagram for module imports."""
     lines: List[str] = ["flowchart LR"]
     edges = set()
-    max_edges = 400
+
+    def is_test_label(label: str) -> bool:
+        l = (label or "").lower()
+        return "test" in l or "tests" in l
 
     for f in entities.get("files", []):
         mod_src = f.get("module", "")
@@ -87,14 +94,13 @@ def make_module_graph_mermaid(entities: Dict) -> str:
             tgt = imp.get("module", "")
             if not tgt:
                 continue
+            if filter_tests and (is_test_label(mod_src) or is_test_label(tgt)):
+                continue
             edge = f"  \"{mod_src}\" --> \"{tgt}\""
             if edge not in edges:
                 lines.append(edge)
                 edges.add(edge)
                 if len(edges) >= max_edges:
-                    break
-        if len(edges) >= max_edges:
-            break
-
+                    return "\n".join(lines)
     return "\n".join(lines)
 
