@@ -223,6 +223,16 @@ def main():
     st.markdown('<h1 class="main-header">🧠 Codebase Genius</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">AI-Powered Repository Documentation Generator</p>', unsafe_allow_html=True)
 
+    # Main input section: move URL input and Generate button to main body
+    repo_url = st.text_input(
+        "Repository URL",
+        placeholder="https://github.com/username/repo",
+        help="Enter a GitHub repository URL",
+        key="repo_url_main",
+    )
+    generate_button = st.button("🚀 Generate Documentation", type="primary")
+
+
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -239,12 +249,6 @@ def main():
         if "diagram_max_edges_module" not in st.session_state:
             st.session_state.diagram_max_edges_module = 400
 
-        # Repository URL
-        repo_url = st.text_input(
-            "Repository URL",
-            placeholder="https://github.com/username/repo",
-            help="Enter a GitHub repository URL"
-        )
 
         # Analysis depth
         depth = st.selectbox(
@@ -305,10 +309,6 @@ def main():
         max_files = st.number_input("Max Files", min_value=0, value=0, help="0 = unlimited")
         max_file_size_mb = st.number_input("Max File Size (MB)", min_value=0, value=0, help="0 = unlimited")
         max_file_size_bytes = max_file_size_mb * 1024 * 1024 if max_file_size_mb > 0 else 0
-
-        # Generate button
-        st.markdown("---")
-        generate_button = st.button("🚀 Generate Documentation", type="primary", use_container_width=True)
 
     # Main content area
     if generate_button:
