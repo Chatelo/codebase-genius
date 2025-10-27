@@ -1,5 +1,6 @@
 ---
-type: "always_apply"
+type: "agent_requested"
+description: "Example description"
 ---
 
 You're absolutely right! Let me add a comprehensive AI/byLLM integration section to the backend prompt:
