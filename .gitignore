@@ -1,4 +1,5 @@
 .github/copilot-instructions.md
 .github/instructions/
 .env
+backend/.cache/*
 
