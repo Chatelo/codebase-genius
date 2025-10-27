@@ -1,0 +1,8 @@
+{
+  repo_url:https://github.com/karpathy/micrograd,
+  depth:deep,
+  use_llm: false,
+  include_diagrams: true,
+  include_exts: [.py, .md],
+  max_files: 200
+}

@@ -126,7 +126,12 @@ def build_repo_graph(
                 for c in fe2["calls"] {
                     caller = None; callee = None;
                     if ("caller" in c) and (c["caller"] in func_by_file[rel]) { caller = func_by_file[rel][c["caller"]]; }
-                    if ("callee" in c) and (c["callee"] in func_global) { callee = func_global[c["callee"]]; }
+                    if ("callee" in c) {
+                        if c["callee"] in func_global { callee = func_global[c["callee"]]; }
+                        else {
+                            if c["callee"] in cls_global { callee = cls_global[c["callee"]]; }
+                        }
+                    }
                     if caller != None and callee != None {
                         # Default edge (typed edge creation may be restricted in this context)
                         ln = 0; if "line" in c { ln = c["line"]; }

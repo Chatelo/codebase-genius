@@ -5,6 +5,7 @@ import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
 import from graph.builders { build_repo_graph, EdgeBuilder }
+import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -170,6 +171,33 @@ walker generate_docs {
                 if ("imports" in ccg_stats) { ccg["imports"] = ccg_stats["imports"]; }
             } except Exception as e { }
         }
+        # Fallback: if graph-derived counts are 0, estimate from raw entities
+        try {
+            if (ccg["calls"] == 0) or (ccg["inherits"] == 0) or (ccg["imports"] == 0) {
+                if ("files" in entities) {
+                    calls_e = 0; inh_e = 0; imp_e = 0;
+                    for f in entities["files"] {
+                        if ("calls" in f) { calls_e += len(f["calls"]); }
+                        if ("inherits" in f) { inh_e += len(f["inherits"]); }
+                        if ("imports" in f) { imp_e += len(f["imports"]); }
+                    }
+                    if ccg["calls"] == 0 { ccg["calls"] = calls_e; }
+                    if ccg["inherits"] == 0 { ccg["inherits"] = inh_e; }
+                    if ccg["imports"] == 0 { ccg["imports"] = imp_e; }
+                }
+            }
+        } except Exception as e { }
+
+
+        # Optional Mermaid diagrams
+        diagrams = {};
+        if self.include_diagrams {
+            try {
+                diagrams["call_graph"] = make_call_graph_mermaid(entities);
+                diagrams["class_hierarchy"] = make_class_hierarchy_mermaid(entities);
+                diagrams["module_graph"] = make_module_graph_mermaid(entities);
+            } except Exception as e { diagrams = {}; }
+        }
 
         report {
             "status": "success",
@@ -180,7 +208,8 @@ walker generate_docs {
             "stats": stats,
             "entities": entities,
             "ccg": ccg,
-            "documentation": doc
+            "documentation": doc,
+            "diagrams": diagrams
         };
     }
 }
