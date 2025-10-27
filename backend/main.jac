@@ -3,6 +3,7 @@
 
 import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
+import from agents.Supervisor { build_overview }
 
 
 glob llm = Model(model_name="gpt-4o-mini");
@@ -33,6 +34,8 @@ walker api_hello {
             "message": msg
         };
     }
+}
+
 
 walker generate_docs {
     has repo_url: str = "";
@@ -45,21 +48,36 @@ walker generate_docs {
     }
 
     can process with `root entry {
-        result = "";
+        # Build an overview via Supervisor helpers (stub unless depth=="deep")
+        overview = build_overview(self.repo_url, self.depth);
+        file_tree = overview["file_tree"];
+        stats = overview["stats"];
+        entities = {};
+        if "entities" in overview { entities = overview["entities"]; }
+
+        # Prepare extra context for the LLM
+        extra_context = f"Files={stats['files']}, Jac={stats['jac_files']}, Docs={stats['docs']}. Diagrams={self.include_diagrams}.";
+
+        # Generate documentation (stub or LLM)
+        doc = "";
         if self.use_llm {
-            prompt = f"Generate high-level documentation for repo: {self.repo_url}. Depth: {self.depth}. Include diagrams: {self.include_diagrams}.";
-            result = docgen_summarize(self.repo_url, self.depth, prompt);
+            prompt = f"Generate high-level documentation for repo: {self.repo_url}. Depth: {self.depth}. " + extra_context;
+            doc = docgen_summarize(self.repo_url, self.depth, prompt);
         } else {
-            result = f"[Stub] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
+            doc = f"[Stub] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
         }
+
         report {
             "status": "success",
             "repo_url": self.repo_url,
             "depth": self.depth,
             "include_diagrams": self.include_diagrams,
-            "documentation": result
+            "file_tree": file_tree,
+            "stats": stats,
+            "entities": entities,
+            "documentation": doc
         };
     }
 }
 
-}
+
