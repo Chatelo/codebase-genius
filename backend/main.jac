@@ -43,6 +43,10 @@ walker generate_docs {
     has depth: str = "standard";
     has use_llm: bool = False;
     has include_diagrams: bool = False;
+    has diagram_filter_tests: bool = False;
+    has diagram_max_edges_call: int = 400;
+    has diagram_max_edges_class: int = 400;
+    has diagram_max_edges_module: int = 400;
     has exclude_dirs: list = [];
 
     #* Sensible defaults: filter out binaries/notebooks and focus on code+docs *#
@@ -89,6 +93,10 @@ walker generate_docs {
             }
 
 
+        # Extract README summary if available
+        readme_summary = "";
+        if "readme_summary" in overview { readme_summary = overview["readme_summary"]; }
+
         # Prepare richer extra context for the LLM
         langs = "{}";
         if "languages" in stats { langs = str(stats["languages"]); }
@@ -98,7 +106,12 @@ walker generate_docs {
         if "tests_code_files" in stats { t_code = stats["tests_code_files"]; }
         e_code = 0;
         if "examples_code_files" in stats { e_code = stats["examples_code_files"]; }
-        extra_context = f"Files={stats['files']}, Code={stats['code_files']}, Python={stats['python_files']}, Docs={stats['docs']}, Tests={stats['tests_files']}(code={t_code}), Examples={stats['examples_files']}(code={e_code}), Languages={langs}, TopDirsByCode={tdirs}, TopN={self.top_n}. Diagrams={self.include_diagrams}.";
+
+        # Include README summary if available
+        readme_context = "";
+        if readme_summary != "" { readme_context = f" README: {readme_summary}"; }
+
+        extra_context = f"Files={stats['files']}, Code={stats['code_files']}, Python={stats['python_files']}, Docs={stats['docs']}, Tests={stats['tests_files']}(code={t_code}), Examples={stats['examples_files']}(code={e_code}), Languages={langs}, TopDirsByCode={tdirs}, TopN={self.top_n}. Diagrams={self.include_diagrams}.{readme_context}";
 
         # Build Top Files (by lines) summary
         top_files_str = "";
@@ -193,9 +206,9 @@ walker generate_docs {
         diagrams = {};
         if self.include_diagrams {
             try {
-                diagrams["call_graph"] = make_call_graph_mermaid(entities);
-                diagrams["class_hierarchy"] = make_class_hierarchy_mermaid(entities);
-                diagrams["module_graph"] = make_module_graph_mermaid(entities);
+                diagrams["call_graph"] = make_call_graph_mermaid(entities, self.diagram_max_edges_call, self.diagram_filter_tests);
+                diagrams["class_hierarchy"] = make_class_hierarchy_mermaid(entities, self.diagram_max_edges_class, self.diagram_filter_tests);
+                diagrams["module_graph"] = make_module_graph_mermaid(entities, self.diagram_max_edges_module, self.diagram_filter_tests);
             } except Exception as e { diagrams = {}; }
         }
 

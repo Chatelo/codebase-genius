@@ -4,7 +4,7 @@ import from agents.RepoMapper { RepoMapper, sample_file_tree }
 import from agents.CodeAnalyzer { CodeAnalyzer, basic_stats }
 import from agents.DocGenie { DocGenie }
 import from utils.repo { clone_or_open_repo }
-import from utils.fs_map { scan_repo_tree }
+import from utils.fs_map { scan_repo_tree, extract_readme, summarize_readme_sections }
 import from utils.ts_analyze { extract_entities }
 
 #* Build an overview by coordinating RepoMapper/CodeAnalyzer.
@@ -39,6 +39,15 @@ def build_overview(
             );
             stats = basic_stats(files, top_n);
             entities = extract_entities(repo_path, files);
+
+            # Extract README if available
+            readme_data = extract_readme(repo_path);
+            readme_summary = "";
+            if readme_data != None {
+                sections = readme_data.get("sections", []);
+                readme_summary = summarize_readme_sections(sections, 5);
+            }
+
             return {
                 "repo_url": repo_url,
                 "depth": depth,
@@ -46,6 +55,8 @@ def build_overview(
                 "file_tree": files,
                 "stats": stats,
                 "entities": entities,
+                "readme": readme_data,
+                "readme_summary": readme_summary,
             };
         } except Exception as e {
             # Fall back to stub on error

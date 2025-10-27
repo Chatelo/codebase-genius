@@ -189,6 +189,34 @@ def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
         height=height,
     )
 
+# Copy-to-clipboard helper for .mmd strings
+def copy_mmd_button(label: str, mmd: str, key: str):
+    try:
+        esc = json.dumps(mmd if isinstance(mmd, str) else str(mmd))
+    except Exception:
+        esc = json.dumps("")
+    components.html(
+        f"""
+        <button id=\"btn-{key}\" style=\"margin: 0.25rem 0;\">{label}</button>
+        <script>
+        const txt_{key.replace('-', '_')} = {esc};
+        const el_{key.replace('-', '_')} = document.getElementById('btn-{key}');
+        if (el_{key.replace('-', '_')}) {{
+            el_{key.replace('-', '_')}.addEventListener('click', async () => {{
+                try {{
+                    await navigator.clipboard.writeText(txt_{key.replace('-', '_')});
+                    alert('Copied to clipboard');
+                }} catch (e) {{
+                    alert('Copy failed: ' + e);
+                }}
+            }});
+        }}
+        </script>
+        """,
+        height=45,
+        key=f"copy-{key}"
+    )
+
 
 def main():
     # Header
@@ -198,6 +226,18 @@ def main():
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
+
+        # Initialize session state for diagram controls
+        if "include_diagrams" not in st.session_state:
+            st.session_state.include_diagrams = False
+        if "diagram_filter_tests" not in st.session_state:
+            st.session_state.diagram_filter_tests = True
+        if "diagram_max_edges_call" not in st.session_state:
+            st.session_state.diagram_max_edges_call = 400
+        if "diagram_max_edges_class" not in st.session_state:
+            st.session_state.diagram_max_edges_class = 400
+        if "diagram_max_edges_module" not in st.session_state:
+            st.session_state.diagram_max_edges_module = 400
 
         # Repository URL
         repo_url = st.text_input(
@@ -217,7 +257,16 @@ def main():
         # LLM settings
         st.subheader("🤖 AI Settings")
         use_llm = st.checkbox("Enable AI Documentation", value=True, help="Use LLM to generate comprehensive documentation")
-        include_diagrams = st.checkbox("Include Diagrams", value=False, help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)")
+        include_diagrams = st.checkbox("Include Diagrams", key="include_diagrams", help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)")
+        diagram_filter_tests = st.checkbox("Filter test modules/classes/functions in diagrams", key="diagram_filter_tests")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            diagram_max_edges_call = st.number_input("Max Edges: Call Graph", min_value=50, max_value=2000, step=50, key="diagram_max_edges_call")
+        with col2:
+            diagram_max_edges_class = st.number_input("Max Edges: Class Hierarchy", min_value=50, max_value=2000, step=50, key="diagram_max_edges_class")
+        with col3:
+            diagram_max_edges_module = st.number_input("Max Edges: Module Graph", min_value=50, max_value=2000, step=50, key="diagram_max_edges_module")
+
         top_n = st.slider("Top N Items", min_value=3, max_value=20, value=10, help="Number of top items to track")
 
         # Filtering options
@@ -278,7 +327,11 @@ def main():
             "include_exts": include_exts,
             "include_paths": include_paths,
             "max_files": max_files,
-            "max_file_size_bytes": max_file_size_bytes
+            "max_file_size_bytes": max_file_size_bytes,
+            "diagram_filter_tests": diagram_filter_tests,
+            "diagram_max_edges_call": diagram_max_edges_call,
+            "diagram_max_edges_class": diagram_max_edges_class,
+            "diagram_max_edges_module": diagram_max_edges_module
         }
 
         # Show configuration
@@ -300,6 +353,23 @@ def main():
             tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data"])
 
             with tab1:
+
+                with st.expander("📈 Diagrams Preview", expanded=False):
+                    diags = result.get("diagrams", {})
+                    if not diags:
+                        st.info("No diagrams found. Enable 'Include Diagrams' and re-run.")
+                    else:
+                        if diags.get("call_graph"):
+                            render_mermaid_diagram("Call Graph", diags["call_graph"], height=450)
+                            copy_mmd_button("📋 Copy Call Graph (.mmd)", diags["call_graph"], key="call-preview")
+                        if diags.get("class_hierarchy"):
+                            render_mermaid_diagram("Class Hierarchy", diags["class_hierarchy"], height=450)
+                            copy_mmd_button("📋 Copy Class Hierarchy (.mmd)", diags["class_hierarchy"], key="class-preview")
+                        if diags.get("module_graph"):
+                            render_mermaid_diagram("Module Graph", diags["module_graph"], height=400)
+                            copy_mmd_button("📋 Copy Module Graph (.mmd)", diags["module_graph"], key="module-preview")
+
+
                 st.subheader("Generated Documentation")
                 documentation = result.get("documentation", "No documentation generated.")
                 st.markdown(documentation)
@@ -333,6 +403,8 @@ def main():
                             file_name="call_graph.mmd",
                             mime="text/plain",
                         )
+                        copy_mmd_button("📋 Copy Call Graph (.mmd)", diags["call_graph"], key="call-diag")
+
                     if diags.get("class_hierarchy"):
                         render_mermaid_diagram("Class Hierarchy", diags["class_hierarchy"], height=600)
                         st.download_button(
@@ -341,6 +413,8 @@ def main():
                             file_name="class_hierarchy.mmd",
                             mime="text/plain",
                         )
+                        copy_mmd_button("📋 Copy Class Hierarchy (.mmd)", diags["class_hierarchy"], key="class-diag")
+
                     if diags.get("module_graph"):
                         render_mermaid_diagram("Module Graph", diags["module_graph"], height=500)
                         st.download_button(
@@ -349,6 +423,8 @@ def main():
                             file_name="module_graph.mmd",
                             mime="text/plain",
                         )
+                        copy_mmd_button("📋 Copy Module Graph (.mmd)", diags["module_graph"], key="module-diag")
+
 
             with tab4:
                 if "file_tree" in result:

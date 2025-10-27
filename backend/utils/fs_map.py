@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -173,4 +174,111 @@ def scan_repo_tree(
             if max_files and len(out) >= max_files:
                 return out
     return out
+
+
+def extract_readme(root_path: str) -> Optional[Dict]:
+    """
+    Extract README.md (or similar) from repository root.
+
+    Returns a dict with:
+        - path: relative path to README
+        - content: full text content
+        - sections: list of markdown sections
+        - size: file size in bytes
+        - lines: number of lines
+    """
+    readme_names = ["README.md", "README.rst", "README.txt", "README", "Readme.md"]
+
+    for name in readme_names:
+        readme_path = Path(root_path) / name
+        if readme_path.exists() and readme_path.is_file():
+            try:
+                content = readme_path.read_text(encoding="utf-8", errors="ignore")
+                sections = _extract_markdown_sections(content)
+
+                return {
+                    "path": name,
+                    "content": content,
+                    "sections": sections,
+                    "size": readme_path.stat().st_size,
+                    "lines": len(content.splitlines())
+                }
+            except Exception:
+                continue
+
+    return None
+
+
+def _extract_markdown_sections(content: str) -> List[Dict]:
+    """
+    Extract markdown sections (headings and their content).
+
+    Returns a list of dicts with:
+        - level: heading level (1-6)
+        - title: heading text
+        - content: section content (text after heading until next heading)
+    """
+    sections = []
+    lines = content.splitlines()
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # Match markdown headings: # Title, ## Title, etc.
+        match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        if match:
+            level = len(match.group(1))
+            title = match.group(2).strip()
+
+            # Collect content until next heading
+            content_lines = []
+            i += 1
+            while i < len(lines):
+                if re.match(r'^#{1,6}\s+', lines[i]):
+                    break
+                content_lines.append(lines[i])
+                i += 1
+
+            sections.append({
+                "level": level,
+                "title": title,
+                "content": "\n".join(content_lines).strip()
+            })
+        else:
+            i += 1
+
+    return sections
+
+
+def summarize_readme_sections(sections: List[Dict], max_sections: int = 5) -> str:
+    """
+    Create a concise summary of README sections.
+
+    Takes the top N sections and creates a brief overview.
+    """
+    if not sections:
+        return ""
+
+    # Take top-level sections (level 1 and 2)
+    top_sections = [s for s in sections if s["level"] <= 2][:max_sections]
+
+    if not top_sections:
+        top_sections = sections[:max_sections]
+
+    summary_parts = []
+    for section in top_sections:
+        title = section["title"]
+        content = section["content"]
+
+        # Take first 200 chars of content
+        if content:
+            preview = content[:200].replace("\n", " ").strip()
+            if len(content) > 200:
+                preview += "..."
+            summary_parts.append(f"{title}: {preview}")
+        else:
+            summary_parts.append(title)
+
+    return " | ".join(summary_parts)
 

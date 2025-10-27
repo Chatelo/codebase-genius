@@ -289,6 +289,19 @@ backgroundColor = "#ffffff"
 
 ---
 
+## 📊 Sample Outputs
+
+See real examples of Codebase Genius in action:
+
+- **[outputs/micrograd/](outputs/micrograd/)** - Analysis of [karpathy/micrograd](https://github.com/karpathy/micrograd)
+  - `documentation.md` - AI-generated comprehensive documentation
+  - `diagrams/` - Mermaid diagrams (call graph, class hierarchy, module dependencies)
+  - `statistics.json` - Repository metrics and analytics
+
+See **[outputs/README.md](outputs/README.md)** for details on interpreting sample outputs.
+
+---
+
 ## 📚 Documentation
 
 - **[QUICKSTART.md](QUICKSTART.md)**: Get started in 5 minutes
@@ -306,17 +319,20 @@ backgroundColor = "#ffffff"
 - Rich statistics and visualizations
 - Streamlit web UI
 - Graph architecture foundation
+- **Diagram generation (Mermaid)** ✨
+- **Call graph, class hierarchy, and module dependency diagrams** ✨
+- **README extraction and summarization** ✨
+- **Sample outputs with real repositories** ✨
 
 ### 🚧 In Progress
 - Graph traversal walkers
 - Enhanced entity extraction with tree-sitter
 
 ### 📋 Planned
-- Diagram generation (Mermaid)
-- Call graph analysis
 - Incremental updates
 - Multi-repository analysis
 - Code search and navigation
+- Prioritized analysis (entry-point detection)
 
 ---
 
