@@ -1,5 +1,77 @@
 # Analyzes code semantics (skeleton)
 
+import from graph.nodes { Repository, Function, Class, Module }
+
+#* CCG Query helpers operating on Repository.ccg_* caches (no traversal required) *#
+def ccg_get_callers(repo: Repository, func_name: str) -> list {
+    res = [];
+    if repo == None { return res; }
+    if "ccg_calls" in repo {
+        for rel in repo.ccg_calls {
+            callee = None; caller = None; ln = 0;
+            if "callee" in rel { callee = rel["callee"]; }
+            if "caller" in rel { caller = rel["caller"]; }
+            if "line" in rel { ln = rel["line"]; }
+            if callee != None and caller != None and (callee.name == func_name) {
+                res.append({"name": caller.name, "line": ln});
+            }
+        }
+    }
+    return res;
+}
+
+def ccg_get_callees(repo: Repository, func_name: str) -> list {
+    res = [];
+    if repo == None { return res; }
+    if "ccg_calls" in repo {
+        for rel in repo.ccg_calls {
+            callee = None; caller = None; ln = 0;
+            if "callee" in rel { callee = rel["callee"]; }
+            if "caller" in rel { caller = rel["caller"]; }
+            if "line" in rel { ln = rel["line"]; }
+            if callee != None and caller != None and (caller.name == func_name) {
+                res.append({"name": callee.name, "line": ln});
+            }
+        }
+    }
+    return res;
+}
+
+def ccg_get_subclasses(repo: Repository, class_name: str) -> list {
+    res = [];
+    if repo == None { return res; }
+    if "ccg_inherits" in repo {
+        for rel in repo.ccg_inherits {
+            sub = None; base = None; t = "extends";
+            if "sub" in rel { sub = rel["sub"]; }
+            if "base" in rel { base = rel["base"]; }
+            if "type" in rel { t = rel["type"]; }
+            if sub != None and base != None and (base.name == class_name) {
+                res.append({"name": sub.name, "type": t});
+            }
+        }
+    }
+    return res;
+}
+
+def ccg_get_dependencies(repo: Repository, module_name: str) -> list {
+    res = [];
+    if repo == None { return res; }
+    if "ccg_imports" in repo {
+        for rel in repo.ccg_imports {
+            src = None; dst = None; al = ""; it = "import";
+            if "src" in rel { src = rel["src"]; }
+            if "dst" in rel { dst = rel["dst"]; }
+            if "alias" in rel { al = rel["alias"]; }
+            if "import_type" in rel { it = rel["import_type"]; }
+            if src != None and dst != None and (src.name == module_name) {
+                res.append({"name": dst.name, "alias": al, "type": it});
+            }
+        }
+    }
+    return res;
+}
+
 #* Compute basic stats from a file_tree list.
 # Returns dict with counts: files, jac_files, docs, plus code_files, python_files, languages and doc_kinds breakdowns.
 *#

@@ -129,7 +129,9 @@ def build_repo_graph(
                     if ("callee" in c) and (c["callee"] in func_global) { callee = func_global[c["callee"]]; }
                     if caller != None and callee != None {
                         # Default edge (typed edge creation may be restricted in this context)
+                        ln = 0; if "line" in c { ln = c["line"]; }
                         caller ++> callee;
+                        repo_node.ccg_calls.append({"caller": caller, "callee": callee, "line": ln, "type": "direct"});
                     }
                 }
             }
@@ -141,7 +143,10 @@ def build_repo_graph(
                         sub = None; base = None;
                         if inh["class"] in cls_global { sub = cls_global[inh["class"]]; }
                         if inh["base"] in cls_global { base = cls_global[inh["base"]]; }
-                        if sub != None and base != None { sub ++> base; }
+                        if sub != None and base != None {
+                            sub ++> base;
+                            repo_node.ccg_inherits.append({"sub": sub, "base": base, "type": "extends"});
+                        }
                     }
                 }
             }
@@ -158,8 +163,12 @@ def build_repo_graph(
                         repo_node ++> tgt;
                         mod_global[tgt_name] = tgt;
                     }
-                    # Connect modules with default edge
+                    # Connect modules with default edge and cache for typed edge materialization
+                    al = ""; itype = "import";
+                    if "alias" in imp { al = imp["alias"]; }
+                    if "import_type" in imp { itype = imp["import_type"]; }
                     mod_src ++> tgt;
+                    repo_node.ccg_imports.append({"src": mod_src, "dst": tgt, "alias": al, "import_type": itype});
                 }
             }
         }
@@ -168,10 +177,60 @@ def build_repo_graph(
     return repo_node;
 }
 
+#* EdgeBuilder: materializes typed edges (Calls, Inherits, Imports) from cached CCG relations *#
+walker EdgeBuilder {
+    has created: dict = {"calls": 0, "inherits": 0, "imports": 0};
+
+    can materialize with Repository entry {
+        # Calls
+        for rel in here.ccg_calls {
+            caller = None; callee = None; ln = 0; ctype = "direct";
+            if "caller" in rel { caller = rel["caller"]; }
+            if "callee" in rel { callee = rel["callee"]; }
+            if "line" in rel { ln = rel["line"]; }
+            if "type" in rel { ctype = rel["type"]; }
+            if caller != None and callee != None {
+                caller +>: Calls(line_number=ln, call_type=ctype) :+> callee;
+                visitor.created["calls"] += 1;
+            }
+        }
+
+        # Inherits
+        for rel in here.ccg_inherits {
+            sub = None; base = None; itype = "extends";
+            if "sub" in rel { sub = rel["sub"]; }
+            if "base" in rel { base = rel["base"]; }
+            if "type" in rel { itype = rel["type"]; }
+            if sub != None and base != None {
+                sub +>: Inherits(inheritance_type=itype) :+> base;
+                visitor.created["inherits"] += 1;
+            }
+        }
+
+        # Imports
+        for rel in here.ccg_imports {
+            src = None; dst = None; al = ""; itype = "import";
+            if "src" in rel { src = rel["src"]; }
+            if "dst" in rel { dst = rel["dst"]; }
+            if "alias" in rel { al = rel["alias"]; }
+            if "import_type" in rel { itype = rel["import_type"]; }
+            if src != None and dst != None {
+                src +>: Imports(import_type=itype, alias=al) :+> dst;
+                visitor.created["imports"] += 1;
+            }
+        }
+
+        # Persist counts on the repo for later reporting
+        here.ccg_stats = visitor.created;
+        report visitor.created;
+    }
+}
+
+
 #* StatsCollector: Traverses the graph and computes statistics *#
 walker StatsCollector {
     has stats: dict = {};
-    
+
     can collect with Repository entry {
         # Initialize stats
         visitor.stats = {
@@ -185,41 +244,41 @@ walker StatsCollector {
             "languages": {},
             "top_dirs": {}
         };
-        
+
         # Traversal disabled (visit syntax not available in this environment)
         # TODO: Implement traversal using supported APIs or during graph build
-        
+
         # Store stats in Repository node
         here.stats = visitor.stats;
-        
+
         report visitor.stats;
     }
-    
+
     can count_file with CodeFile entry {
         visitor.stats["files"] += 1;
-        
+
         if here.language != "" and here.language != "unknown" {
             visitor.stats["code_files"] += 1;
-            
+
             # Count by language
             if here.language not in visitor.stats["languages"] {
                 visitor.stats["languages"][here.language] = 0;
             }
             visitor.stats["languages"][here.language] += 1;
         }
-        
+
         if here.is_doc {
             visitor.stats["docs"] += 1;
         }
-        
+
         if here.is_test {
             visitor.stats["tests_files"] += 1;
         }
-        
+
         if here.is_example {
             visitor.stats["examples_files"] += 1;
         }
-        
+
         # Count top-level directory
         path_parts = here.path.split('/');
         if len(path_parts) > 0 {
@@ -230,11 +289,11 @@ walker StatsCollector {
             visitor.stats["top_dirs"][top_dir] += 1;
         }
     }
-    
+
     can count_function with Function entry {
         visitor.stats["functions"] += 1;
     }
-    
+
     can count_class with Class entry {
         visitor.stats["classes"] += 1;
     }
@@ -246,7 +305,7 @@ walker DocCollector {
     has top_files: list = [];
     has api_classes: list = [];
     has total_functions: int = 0;
-    
+
     can collect with Repository entry {
         # Traversal disabled (visit syntax not available in this environment)
         # TODO: Implement DocCollector using supported traversal APIs

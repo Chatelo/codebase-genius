@@ -13,6 +13,12 @@ node Repository {
     has file_tree: list = [];
     has stats: dict = {};
     has error: str = "";
+
+    # CCG relationship caches for typed edge materialization
+    has ccg_calls: list = [];
+    has ccg_inherits: list = [];
+    has ccg_imports: list = [];
+    has ccg_stats: dict = {};
 }
 
 #* Directory node: represents a folder in the repository *#

@@ -4,7 +4,7 @@
 import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
-import from graph.builders { build_repo_graph }
+import from graph.builders { build_repo_graph, EdgeBuilder }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -82,6 +82,12 @@ walker generate_docs {
             _repo_node = None;
         }
 
+            # Materialize typed edges via EdgeBuilder walker (non-fatal)
+            if _repo_node != None {
+                try { EdgeBuilder() spawn _repo_node; } except Exception as e { }
+            }
+
+
         # Prepare richer extra context for the LLM
         langs = "{}";
         if "languages" in stats { langs = str(stats["languages"]); }
@@ -150,6 +156,21 @@ walker generate_docs {
             doc = f"[Stub] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
         }
 
+        ccg = {"calls": 0, "inherits": 0, "imports": 0};
+        if _repo_node != None {
+            # raw cache sizes
+            ccg["calls"] = len(_repo_node.ccg_calls);
+            ccg["inherits"] = len(_repo_node.ccg_inherits);
+            ccg["imports"] = len(_repo_node.ccg_imports);
+            # prefer precise counts from EdgeBuilder if present
+            try {
+                ccg_stats = _repo_node.ccg_stats;
+                if ("calls" in ccg_stats) { ccg["calls"] = ccg_stats["calls"]; }
+                if ("inherits" in ccg_stats) { ccg["inherits"] = ccg_stats["inherits"]; }
+                if ("imports" in ccg_stats) { ccg["imports"] = ccg_stats["imports"]; }
+            } except Exception as e { }
+        }
+
         report {
             "status": "success",
             "repo_url": self.repo_url,
@@ -158,6 +179,7 @@ walker generate_docs {
             "file_tree": file_tree,
             "stats": stats,
             "entities": entities,
+            "ccg": ccg,
             "documentation": doc
         };
     }
