@@ -2,7 +2,7 @@
 
 import from byllm.llm { Model }
 
-glob llm = Model(model_name="gpt-4o-mini");
+glob llm = Model(model_name="gpt-5");
 
 #* Generate a high-level repository overview given minimal inputs.
 # Inputs:
