@@ -55,7 +55,7 @@ Automatically analyze any GitHub repository and generate comprehensive, high-qua
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.10+
+- Python 3.12+
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
 - OpenAI API key
 
