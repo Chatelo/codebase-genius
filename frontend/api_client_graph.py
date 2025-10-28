@@ -1,7 +1,14 @@
 from typing import Dict, Any
 import os
-import requests
-
+try:
+    import requests as _requests
+except Exception:
+    class _RequestsStub:
+        # Provide attribute so tests can patch graph_api.requests.post without the real dependency
+        post = None
+    requests = _RequestsStub()
+else:
+    requests = _requests
 
 DEFAULT_BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
