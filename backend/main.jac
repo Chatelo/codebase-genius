@@ -4,6 +4,8 @@
 import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
+import from agents.CodeAnalyzer { ccg_get_callers, ccg_get_callees, ccg_get_subclasses, ccg_get_dependencies }
+
 import from graph.builders { build_repo_graph }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
 import from utils.output { save_results_to_disk }
@@ -217,6 +219,155 @@ walker generate_docs {
 
         if ep_summary != "" { extra_context += f" EntryPoints=[{ep_summary}]"; }
         if sched_summary != "" { extra_context += f" SchedulerBatches=[{sched_summary}]"; }
+
+        # CCG citations: callers/callees/subclasses/dependencies (kept concise)
+        ccg_context = ""; ccg_mermaid = "";
+        try {
+            if _repo_node != None {
+                # Top functions by fan-in
+                fin = {}; fout = {};
+                try {
+                    for rel in _repo_node.ccg_calls {
+                        callee = None; caller = None;
+                        if "callee" in rel { callee = rel["callee"]; }
+                        if "caller" in rel { caller = rel["caller"]; }
+                        if callee != None {
+                            n = callee.name; if n not in fin { fin[n] = 0; } fin[n] += 1;
+                        }
+                        if caller != None {
+                            n2 = caller.name; if n2 not in fout { fout[n2] = 0; } fout[n2] += 1;
+                        }
+                    }
+                } except Exception as e { }
+
+                # Rank functions by fan-in (desc)
+                ranked_funcs = [];
+                for k in fin {
+                    entry = {"name": k, "count": fin[k]};
+                    ins = False; i = 0;
+                    while i < len(ranked_funcs) {
+                        if entry["count"] > ranked_funcs[i]["count"] { ranked_funcs.insert(i, entry); ins = True; break; }
+                        i += 1;
+                    }
+                    if not ins { ranked_funcs.append(entry); }
+                }
+
+                # Build callers/callees summary for top 3 functions
+                funcs_summary = ""; i = 0; mm_done = False;
+                for rf in ranked_funcs {
+                    if i >= 3 { break; }
+                    fn = rf["name"];
+                    callers = []; callees = [];
+                    try { callers = ccg_get_callers(_repo_node, fn); } except Exception as e { callers = []; }
+                    try { callees = ccg_get_callees(_repo_node, fn); } except Exception as e { callees = []; }
+                    # Dedup and take up to 3 names
+                    c_names = []; j = 0;
+                    for c in callers { if ("name" in c) {
+                        nm = c["name"]; dup = False; t = 0; while t < len(c_names) { if c_names[t] == nm { dup = True; break; } t += 1; }
+                        if not dup { c_names.append(nm); }
+                    } }
+                    cal_names = []; j2 = 0;
+                    for c2 in callees { if ("name" in c2) {
+                        nm2 = c2["name"]; dup2 = False; u = 0; while u < len(cal_names) { if cal_names[u] == nm2 { dup2 = True; break; } u += 1; }
+                        if not dup2 { cal_names.append(nm2); }
+                    } }
+                    # Trim to 3
+                    c_str = ""; a = 0; for nm3 in c_names { if a >= 3 { break; } if c_str != "" { c_str += ", "; } c_str += nm3; a += 1; }
+                    cal_str = ""; b = 0; for nm4 in cal_names { if b >= 3 { break; } if cal_str != "" { cal_str += ", "; } cal_str += nm4; b += 1; }
+                    if funcs_summary != "" { funcs_summary += " | "; }
+                    funcs_summary += f"{fn}: callers=[{c_str}], callees=[{cal_str}]";
+
+                    # Micro-mermaid for the first function only
+                    if not mm_done {
+                        mm_edges = "";
+                        # callers -> fn
+                        a2 = 0; for nm5 in c_names { if a2 >= 3 { break; } if mm_edges != "" { mm_edges += " "; } mm_edges += f"{nm5}-->{fn};"; a2 += 1; }
+                        # fn -> callees
+                        b2 = 0; for nm6 in cal_names { if b2 >= 3 { break; } if mm_edges != "" { mm_edges += " "; } mm_edges += f"{fn}-->{nm6};"; b2 += 1; }
+                        if mm_edges != "" { ccg_mermaid = f"```mermaid graph LR; {mm_edges}```"; }
+                        mm_done = True;
+                    }
+                    i += 1;
+                }
+
+                # Classes: pick top 3 by subclass count
+                classes_all = [];
+                try {
+                    if ("files" in entities) {
+                        for f in entities["files"] { if ("classes" in f) { for cn in f["classes"] {
+                            # Dedup class names
+                            is_dup = False; z = 0; while z < len(classes_all) { if classes_all[z] == cn { is_dup = True; break; } z += 1; }
+                            if not is_dup { classes_all.append(cn); }
+                        } } }
+                    }
+                } except Exception as e { classes_all = []; }
+                cls_counts = [];
+                for cn2 in classes_all {
+                    subs = []; try { subs = ccg_get_subclasses(_repo_node, cn2); } except Exception as e { subs = []; }
+                    cnt = 0; for s in subs { cnt += 1; }
+                    entry2 = {"name": cn2, "count": cnt};
+                    ins2 = False; y = 0; while y < len(cls_counts) {
+                        if entry2["count"] > cls_counts[y]["count"] { cls_counts.insert(y, entry2); ins2 = True; break; }
+                        y += 1;
+                    }
+                    if not ins2 { cls_counts.append(entry2); }
+                }
+                classes_summary = ""; k2 = 0;
+                for cc in cls_counts {
+                    if k2 >= 2 { break; }
+                    cn3 = cc["name"]; subs2 = []; try { subs2 = ccg_get_subclasses(_repo_node, cn3); } except Exception as e { subs2 = []; }
+                    s_str = ""; w = 0; for s in subs2 { if ("name" in s) { if w >= 3 { break; } if s_str != "" { s_str += ", "; } s_str += s["name"]; w += 1; } }
+                    if classes_summary != "" { classes_summary += " | "; }
+                    classes_summary += f"{cn3}: subclasses=[{s_str}]";
+                    k2 += 1;
+                }
+
+                # Modules: derive from entities and list deps
+                mods_all = [];
+                try {
+                    if ("files" in entities) {
+                        for f in entities["files"] { if ("module" in f) {
+                            mn = f["module"]; if mn != "" {
+                                dupm = False; q = 0; while q < len(mods_all) { if mods_all[q] == mn { dupm = True; break; } q += 1; }
+                                if not dupm { mods_all.append(mn); }
+                            }
+                        } }
+                    }
+                } except Exception as e { mods_all = []; }
+                # Rank by number of dependencies (outgoing imports)
+                mod_counts = [];
+                for mn2 in mods_all {
+                    deps = []; try { deps = ccg_get_dependencies(_repo_node, mn2); } except Exception as e { deps = []; }
+                    mc = 0; for d in deps { mc += 1; }
+                    entry3 = {"name": mn2, "count": mc};
+                    ins3 = False; r = 0; while r < len(mod_counts) {
+                        if entry3["count"] > mod_counts[r]["count"] { mod_counts.insert(r, entry3); ins3 = True; break; }
+                        r += 1;
+                    }
+                    if not ins3 { mod_counts.append(entry3); }
+                }
+                mods_summary = ""; k3 = 0;
+                for md in mod_counts {
+                    if k3 >= 2 { break; }
+                    mn3 = md["name"]; deps2 = []; try { deps2 = ccg_get_dependencies(_repo_node, mn3); } except Exception as e { deps2 = []; }
+                    d_str = ""; v = 0; for d in deps2 { if ("name" in d) { if v >= 3 { break; } if d_str != "" { d_str += ", "; } d_str += d["name"]; v += 1; } }
+                    if mods_summary != "" { mods_summary += " | "; }
+                    mods_summary += f"{mn3}: imports=[{d_str}]";
+                    k3 += 1;
+                }
+
+                # Combine
+                ccg_parts = [];
+                if funcs_summary != "" { ccg_parts.append(f"Funcs: {funcs_summary}"); }
+                if classes_summary != "" { ccg_parts.append(f"Classes: {classes_summary}"); }
+                if mods_summary != "" { ccg_parts.append(f"Modules: {mods_summary}"); }
+                if len(ccg_parts) > 0 { ccg_context = " ".join(ccg_parts); }
+            }
+        } except Exception as e { ccg_context = ""; ccg_mermaid = ""; }
+
+        if ccg_context != "" { extra_context += f" CCGRels={{ {ccg_context} }}"; }
+        if ccg_mermaid != "" { extra_context += f" CCGDiagram={ccg_mermaid}"; }
+
 
         # Build Top Files (by lines) summary
         top_files_str = "";
