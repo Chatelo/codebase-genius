@@ -6,7 +6,7 @@ import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
 import from agents.CodeAnalyzer { ccg_get_callers, ccg_get_callees, ccg_get_subclasses, ccg_get_dependencies }
 
-import from graph.builders { build_repo_graph }
+import from graph.builders { build_repo_graph, collect_stats_from_repo, doc_collect }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
 import from utils.output { save_results_to_disk }
 import from utils.cache { get_cache }
@@ -697,3 +697,49 @@ walker api_ccg_overview {
         report {"status": "success", "repo_url": self.repo_url, "overview": out};
     }
 }
+
+# Graph traversal API: Stats from graph and document-oriented aggregates
+walker api_graph_stats {
+    has repo_url: str = "";
+    has depth: str = "deep";
+    has top_n: int = 10;
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if self.repo_url == "" { report {"status": "error", "message": "repo_url is required", "status_code": 400}; }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        st = {}; err = gerr;
+        if _repo_node != None {
+            try { st = collect_stats_from_repo(_repo_node, self.top_n); } catch Exception as e { err = str(e); st = {}; }
+        }
+        report {"status": "success", "repo_url": self.repo_url, "stats": st, "error": err};
+    }
+}
+
+walker api_graph_docs {
+    has repo_url: str = "";
+    has depth: str = "deep";
+    has top_n: int = 10;
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if self.repo_url == "" { report {"status": "error", "message": "repo_url is required", "status_code": 400}; }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        docd = {"top_files": [], "api_classes": [], "total_functions": 0}; err = gerr;
+        if _repo_node != None {
+            try { docd = doc_collect(_repo_node, ents, self.top_n); } catch Exception as e { err = str(e); docd = {"top_files": [], "api_classes": [], "total_functions": 0}; }
+        }
+        report {"status": "success", "repo_url": self.repo_url, "docs": docd, "error": err};
+    }
+}
+

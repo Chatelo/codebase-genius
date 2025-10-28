@@ -208,3 +208,26 @@ pip install -r requirements.txt
 ## License
 
 Part of the Codebase Genius project.
+
+
+---
+
+## 🧭 CCG Explorer (UI)
+
+A dedicated tab in the app exposes the Code Context Graph (CCG):
+
+- Overview: graph counts (calls, inherits, imports) and top‑N functions/classes/modules
+- Function Callers/Callees: input a function name, view results + micro‑mermaid diagram
+- Class Subclasses: input a class FQN, view subclasses
+- Module Dependencies: input a module/package, view imports
+
+All sections include robust error handling, caching, and download/copy helpers.
+
+### Backend Endpoints
+- POST `/walker/api_ccg_overview` — { repo_url, depth, top_n }
+- POST `/walker/api_ccg_callers` — { repo_url, func_name, depth }
+- POST `/walker/api_ccg_callees` — { repo_url, func_name, depth }
+- POST `/walker/api_ccg_subclasses` — { repo_url, class_name, depth }
+- POST `/walker/api_ccg_dependencies` — { repo_url, module_name, depth }
+
+See the root README for full request/response schemas and cURL examples.

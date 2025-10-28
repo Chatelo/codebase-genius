@@ -1,0 +1,111 @@
+{
+  "info": {
+    "name": "Codebase Genius - CCG API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "9f76e1c0-0000-4aa0-9b00-ccg-api-000000000001",
+    "description": "Postman collection for CCG endpoints"
+  },
+  "item": [
+    {
+      "name": "CCG Overview",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"depth\": \"deep\",\n  \"top_n\": 5\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_ccg_overview",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_ccg_overview"]
+        }
+      }
+    },
+    {
+      "name": "Function Callers",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"func_name\": \"pkg.module.func\",\n  \"depth\": \"deep\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_ccg_callers",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_ccg_callers"]
+        }
+      }
+    },
+    {
+      "name": "Function Callees",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"func_name\": \"pkg.module.func\",\n  \"depth\": \"deep\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_ccg_callees",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_ccg_callees"]
+        }
+      }
+    },
+    {
+      "name": "Class Subclasses",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"class_name\": \"pkg.module.BaseClass\",\n  \"depth\": \"deep\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_ccg_subclasses",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_ccg_subclasses"]
+        }
+      }
+    },
+    {
+      "name": "Module Dependencies",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"module_name\": \"pkg.module\",\n  \"depth\": \"deep\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_ccg_dependencies",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_ccg_dependencies"]
+        }
+      }
+    }
+  ]
+}
+

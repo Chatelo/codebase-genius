@@ -1,0 +1,323 @@
+openapi: 3.0.3
+info:
+  title: Codebase Genius CCG API
+  version: 1.0.0
+  description: OpenAPI specification for Code Context Graph (CCG) endpoints.
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+paths:
+  /walker/api_ccg_overview:
+    post:
+      summary: Get CCG overview (counts + top-N)
+      operationId: api_ccg_overview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OverviewRequest'
+      responses:
+        '200':
+          description: Overview data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /walker/api_ccg_callers:
+    post:
+      summary: List functions that call the given function
+      operationId: api_ccg_callers
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallersRequest'
+      responses:
+        '200':
+          description: Callers list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionResultsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /walker/api_ccg_callees:
+    post:
+      summary: List functions called by the given function
+      operationId: api_ccg_callees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalleesRequest'
+      responses:
+        '200':
+          description: Callees list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunctionResultsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /walker/api_ccg_subclasses:
+    post:
+      summary: List subclasses of the given class
+      operationId: api_ccg_subclasses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubclassesRequest'
+      responses:
+        '200':
+          description: Subclasses list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassResultsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /walker/api_ccg_dependencies:
+    post:
+      summary: List imports/dependencies of the given module
+      operationId: api_ccg_dependencies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DependenciesRequest'
+      responses:
+        '200':
+          description: Dependencies list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleResultsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [error]
+        message:
+          type: string
+        status_code:
+          type: integer
+      required: [status, message]
+    OverviewRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        depth:
+          type: string
+          enum: [deep, standard]
+          default: deep
+        top_n:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 5
+      required: [repo_url]
+    OverviewCounts:
+      type: object
+      properties:
+        calls:
+          type: integer
+        inherits:
+          type: integer
+        imports:
+          type: integer
+      required: [calls, inherits, imports]
+    TopItem:
+      type: object
+      properties:
+        name:
+          type: string
+        count:
+          type: integer
+      required: [name]
+    OverviewTop:
+      type: object
+      properties:
+        functions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopItem'
+        classes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopItem'
+        modules:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopItem'
+    OverviewPayload:
+      type: object
+      properties:
+        counts:
+          $ref: '#/components/schemas/OverviewCounts'
+        top:
+          $ref: '#/components/schemas/OverviewTop'
+        error:
+          type: string
+      required: [counts, top]
+    OverviewResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        repo_url:
+          type: string
+          format: uri
+        overview:
+          $ref: '#/components/schemas/OverviewPayload'
+      required: [status, repo_url, overview]
+    NameOrObj:
+      oneOf:
+        - type: string
+        - type: object
+          properties:
+            name:
+              type: string
+          required: [name]
+    CallersRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        func_name:
+          type: string
+        depth:
+          type: string
+          enum: [deep, standard]
+          default: deep
+      required: [repo_url, func_name]
+    CalleesRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        func_name:
+          type: string
+        depth:
+          type: string
+          enum: [deep, standard]
+          default: deep
+      required: [repo_url, func_name]
+    SubclassesRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        class_name:
+          type: string
+        depth:
+          type: string
+          enum: [deep, standard]
+          default: deep
+      required: [repo_url, class_name]
+    DependenciesRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        module_name:
+          type: string
+        depth:
+          type: string
+          enum: [deep, standard]
+          default: deep
+      required: [repo_url, module_name]
+    FunctionResultsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        repo_url:
+          type: string
+          format: uri
+        func_name:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NameOrObj'
+        error:
+          type: string
+      required: [status, repo_url, func_name, results]
+    ClassResultsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        repo_url:
+          type: string
+          format: uri
+        class_name:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NameOrObj'
+        error:
+          type: string
+      required: [status, repo_url, class_name, results]
+    ModuleResultsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        repo_url:
+          type: string
+          format: uri
+        module_name:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/NameOrObj'
+        error:
+          type: string
+      required: [status, repo_url, module_name, results]
+

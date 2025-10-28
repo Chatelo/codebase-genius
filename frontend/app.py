@@ -97,6 +97,138 @@ def call_get_progress(repo_url: str, job_id: str) -> Dict[str, Any]:
     except Exception:
         return {"status": "error"}
 
+
+# --- CCG API clients ---
+
+def _extract_report_payload(data: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        if isinstance(data, dict) and "reports" in data and data["reports"]:
+            return data["reports"][0]
+    except Exception:
+        pass
+    return data if isinstance(data, dict) else {}
+
+
+def call_ccg_overview(repo_url: str, depth: str = "deep", top_n: int = 5) -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_ccg_overview",
+            json={"repo_url": repo_url, "depth": depth, "top_n": top_n},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"ccg_overview failed: {e}"}
+
+
+def call_ccg_callers(repo_url: str, func_name: str, depth: str = "deep") -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_ccg_callers",
+            json={"repo_url": repo_url, "func_name": func_name, "depth": depth},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"ccg_callers failed: {e}"}
+
+
+def call_ccg_callees(repo_url: str, func_name: str, depth: str = "deep") -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_ccg_callees",
+            json={"repo_url": repo_url, "func_name": func_name, "depth": depth},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"ccg_callees failed: {e}"}
+
+
+def call_ccg_subclasses(repo_url: str, class_name: str, depth: str = "deep") -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_ccg_subclasses",
+            json={"repo_url": repo_url, "class_name": class_name, "depth": depth},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"ccg_subclasses failed: {e}"}
+
+
+def call_ccg_dependencies(repo_url: str, module_name: str, depth: str = "deep") -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_ccg_dependencies",
+            json={"repo_url": repo_url, "module_name": module_name, "depth": depth},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"ccg_dependencies failed: {e}"}
+
+
+# --- Graph Walker API clients ---
+
+def call_graph_stats(repo_url: str, depth: str = "deep", top_n: int = 10) -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_graph_stats",
+            json={"repo_url": repo_url, "depth": depth, "top_n": top_n},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"graph_stats failed: {e}"}
+
+
+def call_graph_docs(repo_url: str, depth: str = "deep", top_n: int = 10) -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_graph_docs",
+            json={"repo_url": repo_url, "depth": depth, "top_n": top_n},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return _extract_report_payload(resp.json())
+    except Exception as e:
+        return {"status": "error", "message": f"graph_docs failed: {e}"}
+
+
+def build_micro_mermaid_function(func_name: str, callers: List[Dict[str, Any]], callees: List[Dict[str, Any]], max_nodes: int = 5) -> str:
+    try:
+        c_names = []
+        for c in callers:
+            nm = c.get("name") if isinstance(c, dict) else None
+            if nm and nm not in c_names:
+                c_names.append(nm)
+            if len(c_names) >= max_nodes:
+                break
+        d_names = []
+        for c in callees:
+            nm = c.get("name") if isinstance(c, dict) else None
+            if nm and nm not in d_names:
+                d_names.append(nm)
+            if len(d_names) >= max_nodes:
+                break
+        edges = []
+        for nm in c_names:
+            edges.append(f"{nm}-->{func_name};")
+        for nm in d_names:
+            edges.append(f"{func_name}-->{nm};")
+        if not edges:
+            return ""
+        return "graph LR; " + " ".join(edges)
+    except Exception:
+        return ""
+
 def format_file_size(size_bytes: int) -> str:
     """Format file size in human-readable format."""
     for unit in ['B', 'KB', 'MB', 'GB']:
@@ -579,8 +711,16 @@ def main():
                 if base_dir:
                     st.info(f"Documentations and statistics saved to {base_dir}")
 
+
+                # Persist repo/depth for CCG Explorer and init CCG cache
+                st.session_state["last_repo_url"] = repo_url
+                st.session_state["last_depth"] = depth
+                st.session_state["last_top_n"] = top_n
+                if "ccg_cache" not in st.session_state:
+                    st.session_state.ccg_cache = {}
+
             # Create tabs for different views (added 📈 Diagrams and ⚠️ Errors)
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data", "⚠️ Errors"])
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data", "⚠️ Errors", "🧭 CCG Explorer"])
 
             with tab1:
 
@@ -688,6 +828,190 @@ def main():
                         st.write(f"{i}. {e.get('file', 'unknown')}: {e.get('error', '')}")
                 if total == 0:
                     st.info("No errors were recorded.")
+
+
+            with tab7:
+                st.subheader("🧭 CCG Explorer")
+                lr = st.session_state.get("last_repo_url")
+                ld = st.session_state.get("last_depth")
+                tn = st.session_state.get("last_top_n", 5)
+                if not lr or not ld:
+                    st.info("Run an analysis first to enable the CCG Explorer.")
+                else:
+                    st.caption(f"Target: {lr} • Depth: {ld}")
+
+                    # Overview panel
+                    with st.expander("📌 CCG Overview", expanded=True):
+                        refresh = st.button("🔄 Refresh Overview", key="ccg_refresh_overview")
+                        k = f"overview::{lr}::{ld}::{tn}"
+                        if refresh:
+                            st.session_state.ccg_cache.pop(k, None)
+                        data_ov = st.session_state.ccg_cache.get(k)
+                        if data_ov is None:
+                            with st.spinner("Loading overview..."):
+                                data_ov = call_ccg_overview(lr, ld, tn)
+                                st.session_state.ccg_cache[k] = data_ov
+                        if data_ov.get("status") != "success":
+                            st.error(data_ov.get("message", "Failed to load overview"))
+                        else:
+                            ov = data_ov.get("overview") or {}
+                            counts = ov.get("counts") or {}
+                            ca, cb, cc = st.columns(3)
+                            ca.metric("🔁 Calls", counts.get("calls", 0))
+                            cb.metric("🧬 Inherits", counts.get("inherits", 0))
+                            cc.metric("📦 Imports", counts.get("imports", 0))
+                            top = ov.get("top") or {}
+                            t1, t2, t3 = st.columns(3)
+                            def _tab(items):
+                                rows = []
+                                items = items or []
+                                for it in items[:tn]:
+                                    if isinstance(it, dict):
+                                        nm = it.get("name", ""); ct = it.get("count")
+                                    else:
+                                        nm = str(it); ct = None
+                                    rows.append({"Name": nm, "Count": ct})
+                                st.table(rows)
+                            with t1:
+                                st.caption("Top Functions (fan-in)"); _tab(top.get("functions") or [])
+                            with t2:
+                                st.caption("Top Classes (subclasses)"); _tab(top.get("classes") or [])
+                            with t3:
+                                st.caption("Top Modules (deps)"); _tab(top.get("modules") or [])
+                            st.download_button(
+                                label="⬇️ Download Overview (JSON)",
+                                data=json.dumps(ov, indent=2),
+                                file_name="ccg_overview.json",
+                                mime="application/json",
+                            )
+
+
+                    # Function Callers
+                    with st.expander("🧰 Function Callers", expanded=False):
+                        with st.form("form_ccg_callers"):
+                            fn = st.text_input("Function name", value=st.session_state.get("ccg_fn_callers", ""), key="ccg_fn_callers_input")
+                            ok = st.form_submit_button("🔎 Query Callers")
+                        if ok:
+                            st.session_state["ccg_fn_callers"] = fn
+                            if not fn.strip():
+                                st.warning("Please enter a function name.")
+                            else:
+                                ckey = f"callers::{lr}::{ld}::{fn}"
+                                data_c = st.session_state.ccg_cache.get(ckey)
+                                if data_c is None:
+                                    with st.spinner("Fetching callers..."):
+                                        data_c = call_ccg_callers(lr, fn, ld)
+                                        st.session_state.ccg_cache[ckey] = data_c
+                                if data_c.get("status") != "success":
+                                    st.error(data_c.get("message", "Failed to fetch callers"))
+                                else:
+                                    callers = data_c.get("results") or []
+                                    st.success(f"Found {len(callers)} callers for {fn}")
+                                    rows = [{"Name": (c.get("name") if isinstance(c, dict) else str(c))} for c in callers]
+                                    st.dataframe(rows, use_container_width=True)
+                                    # also fetch callees to draw a richer micro-diagram
+                                    dkey = f"callees::{lr}::{ld}::{fn}"
+                                    data_d = st.session_state.ccg_cache.get(dkey)
+                                    if data_d is None or data_d.get("status") != "success":
+                                        try:
+                                            data_d = call_ccg_callees(lr, fn, ld)
+                                            st.session_state.ccg_cache[dkey] = data_d
+                                        except Exception:
+                                            data_d = {"results": []}
+                                    callees = data_d.get("results") or []
+                                    mmd = build_micro_mermaid_function(fn, callers, callees)
+                                    if mmd:
+                                        render_mermaid_diagram(f"Callers/Callees for {fn}", mmd, height=320)
+                                        copy_mmd_button("📋 Copy Diagram (.mmd)", mmd, key=f"copy-callers-{fn}")
+                                    st.download_button("⬇️ Download (JSON)", data=json.dumps(callers, indent=2), file_name=f"callers_{fn}.json", mime="application/json")
+
+                    # Function Callees
+                    with st.expander("🧰 Function Callees", expanded=False):
+                        with st.form("form_ccg_callees"):
+                            fn2 = st.text_input("Function name", value=st.session_state.get("ccg_fn_callees", ""), key="ccg_fn_callees_input")
+                            ok2 = st.form_submit_button("🔎 Query Callees")
+                        if ok2:
+                            st.session_state["ccg_fn_callees"] = fn2
+                            if not fn2.strip():
+                                st.warning("Please enter a function name.")
+                            else:
+                                dkey2 = f"callees::{lr}::{ld}::{fn2}"
+                                data_d2 = st.session_state.ccg_cache.get(dkey2)
+                                if data_d2 is None:
+                                    with st.spinner("Fetching callees..."):
+                                        data_d2 = call_ccg_callees(lr, fn2, ld)
+                                        st.session_state.ccg_cache[dkey2] = data_d2
+                                if data_d2.get("status") != "success":
+                                    st.error(data_d2.get("message", "Failed to fetch callees"))
+                                else:
+                                    callees2 = data_d2.get("results") or []
+                                    st.success(f"Found {len(callees2)} callees for {fn2}")
+                                    rows2 = [{"Name": (c.get("name") if isinstance(c, dict) else str(c))} for c in callees2]
+                                    st.dataframe(rows2, use_container_width=True)
+                                    ckey2 = f"callers::{lr}::{ld}::{fn2}"
+                                    data_c2 = st.session_state.ccg_cache.get(ckey2)
+                                    if data_c2 is None or data_c2.get("status") != "success":
+                                        try:
+                                            data_c2 = call_ccg_callers(lr, fn2, ld)
+                                            st.session_state.ccg_cache[ckey2] = data_c2
+                                        except Exception:
+                                            data_c2 = {"results": []}
+                                    callers2 = data_c2.get("results") or []
+                                    mmd2 = build_micro_mermaid_function(fn2, callers2, callees2)
+                                    if mmd2:
+                                        render_mermaid_diagram(f"Callers/Callees for {fn2}", mmd2, height=320)
+                                        copy_mmd_button("📋 Copy Diagram (.mmd)", mmd2, key=f"copy-callees-{fn2}")
+                                    st.download_button("⬇️ Download (JSON)", data=json.dumps(callees2, indent=2), file_name=f"callees_{fn2}.json", mime="application/json")
+
+                    # Class Subclasses
+                    with st.expander("🏷️ Class Subclasses", expanded=False):
+                        with st.form("form_ccg_subclasses"):
+                            cn = st.text_input("Class name", value=st.session_state.get("ccg_class_name", ""), key="ccg_class_name_input")
+                            ok3 = st.form_submit_button("🔎 Query Subclasses")
+                        if ok3:
+                            st.session_state["ccg_class_name"] = cn
+                            if not cn.strip():
+                                st.warning("Please enter a class name.")
+                            else:
+                                skey = f"subclasses::{lr}::{ld}::{cn}"
+                                data_s = st.session_state.ccg_cache.get(skey)
+                                if data_s is None:
+                                    with st.spinner("Fetching subclasses..."):
+                                        data_s = call_ccg_subclasses(lr, cn, ld)
+                                        st.session_state.ccg_cache[skey] = data_s
+                                if data_s.get("status") != "success":
+                                    st.error(data_s.get("message", "Failed to fetch subclasses"))
+                                else:
+                                    subs = data_s.get("results") or []
+                                    st.success(f"Found {len(subs)} subclasses for {cn}")
+                                    rows3 = [{"Name": (s.get("name") if isinstance(s, dict) else str(s))} for s in subs]
+                                    st.dataframe(rows3, use_container_width=True)
+                                    st.download_button("⬇️ Download (JSON)", data=json.dumps(subs, indent=2), file_name=f"subclasses_{cn}.json", mime="application/json")
+
+                    # Module Dependencies
+                    with st.expander("📦 Module Dependencies", expanded=False):
+                        with st.form("form_ccg_dependencies"):
+                            mn = st.text_input("Module name", value=st.session_state.get("ccg_module_name", ""), key="ccg_module_name_input")
+                            ok4 = st.form_submit_button("🔎 Query Dependencies")
+                        if ok4:
+                            st.session_state["ccg_module_name"] = mn
+                            if not mn.strip():
+                                st.warning("Please enter a module name.")
+                            else:
+                                mkey = f"dependencies::{lr}::{ld}::{mn}"
+                                data_m = st.session_state.ccg_cache.get(mkey)
+                                if data_m is None:
+                                    with st.spinner("Fetching dependencies..."):
+                                        data_m = call_ccg_dependencies(lr, mn, ld)
+                                        st.session_state.ccg_cache[mkey] = data_m
+                                if data_m.get("status") != "success":
+                                    st.error(data_m.get("message", "Failed to fetch dependencies"))
+                                else:
+                                    deps = data_m.get("results") or []
+                                    st.success(f"Found {len(deps)} dependencies for {mn}")
+                                    rows4 = [{"Name": (d.get("name") if isinstance(d, dict) else str(d))} for d in deps]
+                                    st.dataframe(rows4, use_container_width=True)
+                                    st.download_button("⬇️ Download (JSON)", data=json.dumps(deps, indent=2), file_name=f"dependencies_{mn}.json", mime="application/json")
 
         else:
 

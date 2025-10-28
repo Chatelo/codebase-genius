@@ -237,6 +237,7 @@ def build_repo_graph(
     # Store edge statistics on the repository node
     if build_typed_edges {
         repo_node.ccg_stats = edge_stats;
+        try { repo_node.file_tree = files; } except Exception as e { }
     }
 
     return repo_node;
@@ -291,76 +292,177 @@ walker EdgeBuilder {
     }
 }
 
+# Utility function: compute stats from a Repository node (no traversal needed)
+# Returns a dict similar to agents.CodeAnalyzer.basic_stats, plus CCG counts if available
+# top_n controls truncation for top files lists
+
+def collect_stats_from_repo(repo: Repository, top_n: int = 10) -> dict {
+    if repo == None { return {}; }
+    files = [];
+    try { if "file_tree" in repo { files = repo.file_tree; } } except Exception as e { files = []; }
+
+    total = 0; jac_files = 0; docs = 0; code_files = 0; python_files = 0;
+    languages = {}; doc_kinds = {}; top_dirs = {}; tests_files = 0; examples_files = 0;
+    top_dirs_code = {}; tests_code_files = 0; examples_code_files = 0;
+    top_size = []; top_lines = [];
+
+    for item in files {
+        total += 1;
+        has_path = ("path" in item);
+        p = ""; if has_path { p = item["path"]; }
+        # Count top-level directory distribution
+        if has_path and ("/" in p) {
+            top = p.split("/")[0];
+            if (top not in top_dirs) { top_dirs[top] = 0; }
+            top_dirs[top] += 1;
+        }
+        # Detect tests/examples buckets (all files)
+        if has_path and ("/tests/" in p or p.startswith("tests/") or "/test/" in p or p.startswith("test/")) { tests_files += 1; }
+        if has_path and ("/examples/" in p or p.startswith("examples/") or "/example/" in p or p.startswith("example/")) { examples_files += 1; }
+
+        if ("type" in item) and item["type"] == "CodeFile" {
+            code_files += 1;
+            if has_path and ("/" in p) {
+                top = p.split("/")[0];
+                if (top not in top_dirs_code) { top_dirs_code[top] = 0; }
+                top_dirs_code[top] += 1;
+            }
+            # Detect tests/examples buckets for code files only
+            if has_path and ("/tests/" in p or p.startswith("tests/") or "/test/" in p or p.startswith("test/")) { tests_code_files += 1; }
+            if has_path and ("/examples/" in p or p.startswith("examples/") or "/example/" in p or p.startswith("example/")) { examples_code_files += 1; }
+
+            if ("language" in item) {
+                lang = item["language"];
+                if (lang == "jac") { jac_files += 1; }
+                if (lang == "python") { python_files += 1; }
+                if (lang not in languages) { languages[lang] = 0; }
+                languages[lang] += 1;
+            }
+            # Track top N by size for code files
+            if ("size" in item) {
+                sz = item["size"];
+                inserted = False; i = 0;
+                while i < len(top_size) {
+                    if sz > top_size[i]["size"] {
+                        top_size.insert(i, {"path": p, "size": sz});
+                        inserted = True; break;
+                    }
+                    i += 1;
+                }
+                if not inserted { top_size.append({"path": p, "size": sz}); }
+                if len(top_size) > top_n { top_size.pop(); }
+            }
+            # Track top N by lines for code files if provided
+            if ("lines" in item) {
+                ln = item["lines"];
+                inserted2 = False; j = 0;
+                while j < len(top_lines) {
+                    if ln > top_lines[j]["lines"] {
+                        top_lines.insert(j, {"path": p, "lines": ln});
+                        inserted2 = True; break;
+                    }
+                    j += 1;
+                }
+                if not inserted2 { top_lines.append({"path": p, "lines": ln}); }
+                if len(top_lines) > top_n { top_lines.pop(); }
+            }
+        } elif ("type" in item) and item["type"] == "Doc" {
+            docs += 1;
+            if ("language" in item) {
+                dlang = item["language"];
+                if (dlang not in doc_kinds) { doc_kinds[dlang] = 0; }
+                doc_kinds[dlang] += 1;
+            }
+        }
+    }
+
+    # Prefer precise counts if present
+    ccg_calls = 0; ccg_inherits = 0; ccg_imports = 0;
+    try {
+        if ("ccg_stats" in repo) {
+            if ("calls" in repo.ccg_stats) { ccg_calls = repo.ccg_stats["calls"]; }
+            if ("inherits" in repo.ccg_stats) { ccg_inherits = repo.ccg_stats["inherits"]; }
+            if ("imports" in repo.ccg_stats) { ccg_imports = repo.ccg_stats["imports"]; }
+        } else {
+            if ("ccg_calls" in repo) { ccg_calls = len(repo.ccg_calls); }
+            if ("ccg_inherits" in repo) { ccg_inherits = len(repo.ccg_inherits); }
+            if ("ccg_imports" in repo) { ccg_imports = len(repo.ccg_imports); }
+        }
+    } catch Exception as e { }
+
+    return {
+        "files": total,
+        "jac_files": jac_files,
+        "docs": docs,
+        "code_files": code_files,
+        "python_files": python_files,
+        "languages": languages,
+        "doc_kinds": doc_kinds,
+        "tests_files": tests_files,
+        "examples_files": examples_files,
+        "tests_code_files": tests_code_files,
+        "examples_code_files": examples_code_files,
+        "top_dirs": top_dirs,
+        "top_dirs_code": top_dirs_code,
+        "top_files_by_size": top_size,
+        "top_files_by_lines": top_lines,
+        "ccg_counts": {"calls": ccg_calls, "inherits": ccg_inherits, "imports": ccg_imports}
+    };
+}
+
+# Utility function: collect doc-relevant data from repo + entities
+# Returns {"top_files": [...], "api_classes": [...], "total_functions": int}
+
+def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
+    if repo == None { return {"top_files": [], "api_classes": [], "total_functions": 0}; }
+    files = [];
+    try { if "file_tree" in repo { files = repo.file_tree; } } except Exception as e { files = []; }
+
+    # Top files by lines
+    top_lines = [];
+    for item in files {
+        if ("type" in item) and item["type"] == "CodeFile" {
+            p = item.get("path", ""); ln = item.get("lines", 0);
+            inserted = False; i = 0;
+            while i < len(top_lines) {
+                if ln > top_lines[i]["lines"] { top_lines.insert(i, {"path": p, "lines": ln}); inserted = True; break; }
+                i += 1;
+            }
+            if not inserted { top_lines.append({"path": p, "lines": ln}); }
+            if len(top_lines) > top_n { top_lines.pop(); }
+        }
+    }
+
+    # API classes + total functions from entities
+    api_classes = [];
+    total_functions = 0;
+    try {
+        if (entities != None) and ("files" in entities) {
+            # Dedup class names
+            seen = {};
+            for fe in entities["files"] {
+                for cn in fe.get("classes", []) {
+                    if cn not in seen { api_classes.append(cn); seen[cn] = True; }
+                }
+                total_functions += len(fe.get("functions", []));
+            }
+        }
+    } except Exception as e { api_classes = api_classes; total_functions = total_functions; }
+
+    return {"top_files": top_lines, "api_classes": api_classes[0:top_n], "total_functions": total_functions};
+}
+
 
 #* StatsCollector: Traverses the graph and computes statistics *#
 walker StatsCollector {
     has stats: dict = {};
 
     can collect with Repository entry {
-        # Initialize stats
-        visitor.stats = {
-            "files": 0,
-            "code_files": 0,
-            "docs": 0,
-            "tests_files": 0,
-            "examples_files": 0,
-            "functions": 0,
-            "classes": 0,
-            "languages": {},
-            "top_dirs": {}
-        };
-
-        # Traversal disabled (visit syntax not available in this environment)
-        # TODO: Implement traversal using supported APIs or during graph build
-
-        # Store stats in Repository node
-        here.stats = visitor.stats;
-
+        # Compute stats using repository.file_tree and CCG caches
+        visitor.stats = collect_stats_from_repo(here, 10);
+        # Persist on repo node for reuse
+        try { here.stats = visitor.stats; } except Exception as e { }
         report visitor.stats;
-    }
-
-    can count_file with CodeFile entry {
-        visitor.stats["files"] += 1;
-
-        if here.language != "" and here.language != "unknown" {
-            visitor.stats["code_files"] += 1;
-
-            # Count by language
-            if here.language not in visitor.stats["languages"] {
-                visitor.stats["languages"][here.language] = 0;
-            }
-            visitor.stats["languages"][here.language] += 1;
-        }
-
-        if here.is_doc {
-            visitor.stats["docs"] += 1;
-        }
-
-        if here.is_test {
-            visitor.stats["tests_files"] += 1;
-        }
-
-        if here.is_example {
-            visitor.stats["examples_files"] += 1;
-        }
-
-        # Count top-level directory
-        path_parts = here.path.split('/');
-        if len(path_parts) > 0 {
-            top_dir = path_parts[0];
-            if top_dir not in visitor.stats["top_dirs"] {
-                visitor.stats["top_dirs"][top_dir] = 0;
-            }
-            visitor.stats["top_dirs"][top_dir] += 1;
-        }
-    }
-
-    can count_function with Function entry {
-        visitor.stats["functions"] += 1;
-    }
-
-    can count_class with Class entry {
-        visitor.stats["classes"] += 1;
     }
 }
 
@@ -372,9 +474,20 @@ walker DocCollector {
     has total_functions: int = 0;
 
     can collect with Repository entry {
-        # Traversal disabled (visit syntax not available in this environment)
-        # TODO: Implement DocCollector using supported traversal APIs
-        report {"top_files": [], "api_classes": [], "total_functions": 0};
+        # Compute documentation-relevant aggregates from repo + entities snapshot
+        ents = {};
+        try { if ("entities" in here) { ents = here.entities; } } except Exception as e { ents = {}; }
+        # Note: entities are not stored on repo by default; callers can pass via endpoint
+        visitor.top_files = [];
+        visitor.api_classes = [];
+        visitor.total_functions = 0;
+        res = doc_collect(here, ents, visitor.top_n);
+        try {
+            if ("top_files" in res) { visitor.top_files = res["top_files"]; }
+            if ("api_classes" in res) { visitor.api_classes = res["api_classes"]; }
+            if ("total_functions" in res) { visitor.total_functions = res["total_functions"]; }
+        } except Exception as e { }
+        report {"top_files": visitor.top_files, "api_classes": visitor.api_classes, "total_functions": visitor.total_functions};
     }
 }
 
