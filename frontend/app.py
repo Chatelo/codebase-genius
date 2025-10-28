@@ -493,6 +493,12 @@ def main():
         )
         use_llm = st.checkbox("Enable AI", value=True, help="Use LLM to generate comprehensive documentation")
 
+        include_diagrams = st.checkbox(
+            "Include Diagrams",
+            key="include_diagrams",
+            help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)"
+        )
+
         # Response size
         return_full_data = st.checkbox(
             "Full response",
@@ -505,7 +511,6 @@ def main():
         with st.expander("Advanced Settings", expanded=False):
             st.caption("Diagrams")
             diagram_filter_tests = st.checkbox("Filter test modules/classes/functions in diagrams", key="diagram_filter_tests")
-            include_diagrams = st.checkbox("Include Diagrams", key="include_diagrams", help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)")
 
             col1, col2, col3 = st.columns(3)
             with col1:
