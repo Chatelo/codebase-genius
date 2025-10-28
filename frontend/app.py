@@ -919,11 +919,49 @@ def main():
                                 st.metric("Total Functions", doc_payload.get("total_functions", 0))
                             with c2:
                                 st.metric("API Classes", len(doc_payload.get("api_classes", [])))
-                            # Top files table
-                            top_files = doc_payload.get("top_files", [])[:tn]
-                            if top_files:
-                                st.caption("Top Files by Lines (from walker)")
-                                st.table(top_files)
+                            # Top files table with optional extra fields + sorting
+                            top_files_all = list(doc_payload.get("top_files", []))
+                            if top_files_all:
+                                # Determine available sort keys; prefer numeric (lines/size) then path
+                                possible = []
+                                for k in ["lines", "size", "path"]:
+                                    if any(isinstance(it, dict) and (k in it) for it in top_files_all):
+                                        possible.append(k)
+                                if not possible:
+                                    # Fallback: any keys from first item
+                                    possible = list(top_files_all[0].keys())
+
+                                csort1, csort2 = st.columns([3, 1])
+                                with csort1:
+                                    default_idx = possible.index("lines") if "lines" in possible else 0
+                                    sort_by = st.selectbox("Sort by", options=possible, index=default_idx, key="gdocs_sort_key")
+                                with csort2:
+                                    asc = st.checkbox("Ascending", value=False, key="gdocs_sort_asc")
+
+                                # Column selector
+                                # Gather all available keys across rows (keep order stable)
+                                available = []
+                                for it in top_files_all:
+                                    if isinstance(it, dict):
+                                        for k in it.keys():
+                                            if k not in available:
+                                                available.append(k)
+                                preferred = [k for k in ["path", "lines", "size", "language"] if k in available]
+                                rest = [k for k in available if k not in preferred]
+                                default_cols = preferred + rest
+                                selected_cols = st.multiselect("Columns", options=available, default=default_cols, key="gdocs_cols")
+
+                                def _sv(d, k):
+                                    v = d.get(k)
+                                    if isinstance(v, (int, float)): return v
+                                    if isinstance(v, str): return v.lower()
+                                    return 0 if k in ["lines", "size"] else ""
+
+                                sorted_tf = sorted(top_files_all, key=lambda d: _sv(d, sort_by), reverse=not asc)[:tn]
+                                st.caption(f"Top Files (from walker) — sorted by {sort_by}{' ↑' if asc else ' ↓'}")
+                                # Filter to selected columns and preserve order
+                                filtered = [ {k: row.get(k) for k in selected_cols} for row in sorted_tf ]
+                                st.table(filtered)
                             if doc_payload.get("api_classes"):
                                 st.caption("API Classes")
                                 st.table([{ "Class": c } for c in doc_payload.get("api_classes", [])[:tn]])

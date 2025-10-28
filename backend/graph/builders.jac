@@ -418,17 +418,20 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
     files = [];
     try { if "file_tree" in repo { files = repo.file_tree; } } except Exception as e { files = []; }
 
-    # Top files by lines
+    # Top files by lines, include optional metadata (size, language) when available
     top_lines = [];
     for item in files {
         if ("type" in item) and item["type"] == "CodeFile" {
             p = item.get("path", ""); ln = item.get("lines", 0);
+            entry = {"path": p, "lines": ln};
+            try { if ("size" in item) { entry["size"] = item["size"]; } } except Exception as e { }
+            try { if ("language" in item) { entry["language"] = item["language"]; } } except Exception as e { }
             inserted = False; i = 0;
             while i < len(top_lines) {
-                if ln > top_lines[i]["lines"] { top_lines.insert(i, {"path": p, "lines": ln}); inserted = True; break; }
+                if ln > top_lines[i]["lines"] { top_lines.insert(i, entry); inserted = True; break; }
                 i += 1;
             }
-            if not inserted { top_lines.append({"path": p, "lines": ln}); }
+            if not inserted { top_lines.append(entry); }
             if len(top_lines) > top_n { top_lines.pop(); }
         }
     }
