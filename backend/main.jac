@@ -14,6 +14,32 @@ import from utils.cache { get_cache }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
+
+# Shared small helpers for ordered inserts (desc)
+def __insort_desc(lst: list, entry: dict, key: str) -> None {
+    inserted = False; i = 0;
+    while i < len(lst) {
+        cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
+        if entry.get(key, 0) > cur { lst.insert(i, entry); inserted = True; break; }
+        i += 1;
+    }
+    if not inserted { lst.append(entry); }
+}
+
+def __insort_desc2(lst: list, entry: dict, key1: str, key2: str) -> None {
+    inserted = False; i = 0;
+    while i < len(lst) {
+        a1 = entry.get(key1, 0); b1 = 0; try { if (key1 in lst[i]) { b1 = lst[i][key1]; } } except Exception as e { b1 = 0; }
+        if a1 > b1 { lst.insert(i, entry); inserted = True; break; }
+        elif a1 == b1 {
+            a2 = entry.get(key2, 0); b2 = 0; try { if (key2 in lst[i]) { b2 = lst[i][key2]; } } except Exception as e { b2 = 0; }
+            if a2 > b2 { lst.insert(i, entry); inserted = True; break; }
+        }
+        i += 1;
+    }
+    if not inserted { lst.append(entry); }
+}
+
 # AI function (not a walker ability) powered by byLLM
 #* Generate a friendly greeting for the given name. *#
 def make_greeting(name: str) -> str by llm(method="Reason");
@@ -244,12 +270,7 @@ walker generate_docs {
                 ranked_funcs = [];
                 for k in fin {
                     entry = {"name": k, "count": fin[k]};
-                    ins = False; i = 0;
-                    while i < len(ranked_funcs) {
-                        if entry["count"] > ranked_funcs[i]["count"] { ranked_funcs.insert(i, entry); ins = True; break; }
-                        i += 1;
-                    }
-                    if not ins { ranked_funcs.append(entry); }
+                    __insort_desc(ranked_funcs, entry, "count");
                 }
 
                 # Build callers/callees summary for top 3 functions
@@ -306,11 +327,7 @@ walker generate_docs {
                     subs = []; try { subs = ccg_get_subclasses(_repo_node, cn2); } except Exception as e { subs = []; }
                     cnt = 0; for s in subs { cnt += 1; }
                     entry2 = {"name": cn2, "count": cnt};
-                    ins2 = False; y = 0; while y < len(cls_counts) {
-                        if entry2["count"] > cls_counts[y]["count"] { cls_counts.insert(y, entry2); ins2 = True; break; }
-                        y += 1;
-                    }
-                    if not ins2 { cls_counts.append(entry2); }
+                    __insort_desc(cls_counts, entry2, "count");
                 }
                 classes_summary = ""; k2 = 0;
                 for cc in cls_counts {
@@ -340,11 +357,7 @@ walker generate_docs {
                     deps = []; try { deps = ccg_get_dependencies(_repo_node, mn2); } except Exception as e { deps = []; }
                     mc = 0; for d in deps { mc += 1; }
                     entry3 = {"name": mn2, "count": mc};
-                    ins3 = False; r = 0; while r < len(mod_counts) {
-                        if entry3["count"] > mod_counts[r]["count"] { mod_counts.insert(r, entry3); ins3 = True; break; }
-                        r += 1;
-                    }
-                    if not ins3 { mod_counts.append(entry3); }
+                    __insort_desc(mod_counts, entry3, "count");
                 }
                 mods_summary = ""; k3 = 0;
                 for md in mod_counts {
@@ -757,13 +770,28 @@ walker api_ccg_overview {
             try { for rel in _repo_node.ccg_calls { if ("callee" in rel) and (rel["callee"] != None) {
                 nm = rel["callee"].name; if nm not in fin { fin[nm] = 0; } fin[nm] += 1; } } } except Exception as e { fin = {}; }
             funcs = [];
-            for k in fin { entry = {"name": k, "count": fin[k]}; ins = False; i = 0; while i < len(funcs) { if entry["count"] > funcs[i]["count"] { funcs.insert(i, entry); ins=True; break; } i += 1; } if not ins { funcs.append(entry); } }
+            for k in fin {
+                entry = {"name": k, "count": fin[k]};
+                __insort_desc(funcs, entry, "count");
+            }
             # top classes by subclasses
             classes_all = []; try { if ("files" in ents) { for f in ents["files"] { if ("classes" in f) { for cn in f["classes"] { dup=False; j=0; while j < len(classes_all) { if classes_all[j]==cn { dup=True; break; } j+=1; } if not dup { classes_all.append(cn); } } } } } } except Exception as e { classes_all = []; }
-            cls_counts = []; for cn in classes_all { subs = []; try { subs = ccg_get_subclasses(_repo_node, cn); } except Exception as e { subs = []; } cnt=0; for s in subs { cnt += 1; } en = {"name": cn, "count": cnt}; ins2=False; y=0; while y < len(cls_counts) { if en["count"] > cls_counts[y]["count"] { cls_counts.insert(y, en); ins2=True; break; } y+=1; } if not ins2 { cls_counts.append(en); } }
+            cls_counts = [];
+            for cn in classes_all {
+                subs = []; try { subs = ccg_get_subclasses(_repo_node, cn); } except Exception as e { subs = []; }
+                cnt = 0; for s in subs { cnt += 1; }
+                en = {"name": cn, "count": cnt};
+                __insort_desc(cls_counts, en, "count");
+            }
             # top modules by dependencies
             mods_all = []; try { if ("files" in ents) { for f in ents["files"] { if ("module" in f) { mn=f["module"]; if mn!="" { dupm=False; q=0; while q < len(mods_all) { if mods_all[q]==mn { dupm=True; break; } q+=1; } if not dupm { mods_all.append(mn); } } } } } } except Exception as e { mods_all = []; }
-            mod_counts = []; for mn in mods_all { deps=[]; try { deps = ccg_get_dependencies(_repo_node, mn); } except Exception as e { deps = []; } mc=0; for d in deps { mc+=1; } em = {"name": mn, "count": mc}; ins3=False; r=0; while r < len(mod_counts) { if em["count"] > mod_counts[r]["count"] { mod_counts.insert(r, em); ins3=True; break; } r+=1; } if not ins3 { mod_counts.append(em); } }
+            mod_counts = [];
+            for mn in mods_all {
+                deps = []; try { deps = ccg_get_dependencies(_repo_node, mn); } except Exception as e { deps = []; }
+                mc = 0; for d in deps { mc += 1; }
+                em = {"name": mn, "count": mc};
+                __insort_desc(mod_counts, em, "count");
+            }
             # trim
             t = self.top_n; if t < 1 { t = 5; }
             out["top"]["functions"] = funcs[0:t];

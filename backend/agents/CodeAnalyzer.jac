@@ -81,6 +81,18 @@ def analyze_files(repo_path: str, items: list, parallel: bool = True) -> dict {
     return extract_entities(repo_path, items, parallel);
 }
 
+
+# Small helper to maintain descending order by key
+def __insort_desc(lst: list, entry: dict, key: str) -> None {
+    inserted = False; i = 0;
+    while i < len(lst) {
+        cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
+        if entry.get(key, 0) > cur { lst.insert(i, entry); inserted = True; break; }
+        i += 1;
+    }
+    if not inserted { lst.append(entry); }
+}
+
 #* Compute basic stats from a file_tree list.
 # Returns dict with counts: files, jac_files, docs, plus code_files, python_files, languages and doc_kinds breakdowns.
 *#
@@ -125,33 +137,13 @@ def basic_stats(file_tree: list, top_n: int = 10) -> dict {
             # Track top N by size for code files
             if ("size" in item) {
                 sz = item["size"];
-                inserted = False;
-                i = 0;
-                while i < len(top_size) {
-                    if sz > top_size[i]["size"] {
-                        top_size.insert(i, {"path": p, "size": sz});
-                        inserted = True;
-                        break;
-                    }
-                    i += 1;
-                }
-                if not inserted { top_size.append({"path": p, "size": sz}); }
+                __insort_desc(top_size, {"path": p, "size": sz}, "size");
                 if len(top_size) > top_n { top_size.pop(); }
             }
             # Track top N by lines for code files if provided
             if ("lines" in item) {
                 ln = item["lines"];
-                inserted2 = False;
-                j = 0;
-                while j < len(top_lines) {
-                    if ln > top_lines[j]["lines"] {
-                        top_lines.insert(j, {"path": p, "lines": ln});
-                        inserted2 = True;
-                        break;
-                    }
-                    j += 1;
-                }
-                if not inserted2 { top_lines.append({"path": p, "lines": ln}); }
+                __insort_desc(top_lines, {"path": p, "lines": ln}, "lines");
                 if len(top_lines) > top_n { top_lines.pop(); }
             }
         } elif ("type" in item) and item["type"] == "Doc" {
@@ -180,6 +172,17 @@ def basic_stats(file_tree: list, top_n: int = 10) -> dict {
         "top_files_by_size": top_size,
         "top_files_by_lines": top_lines,
     };
+}
+
+
+# Walker wrapper to compute stats from a Repository's file_tree
+walker FileTreeStats {
+    has top_n: int = 10;
+    can compute with Repository entry {
+        ft = []; try { if ("file_tree" in here) { ft = here.file_tree; } } except Exception as e { ft = []; }
+        res = basic_stats(ft, self.top_n);
+        report res;
+    }
 }
 
 walker CodeAnalyzer {

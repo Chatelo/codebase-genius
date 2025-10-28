@@ -158,6 +158,8 @@ def build_repo_graph(
                                 print(f"[build_repo_graph] Calls edge failed for {caller} -> {callee}: {str(e)}; falling back to default edge");
                                 caller ++> callee;
                             }
+                            # Always cache for query helpers
+                            repo_node.ccg_calls.append({"caller": caller, "callee": callee, "line": ln, "type": ctype});
                         } else {
                             # Use default edge and cache for later
                             caller ++> callee;
@@ -187,6 +189,8 @@ def build_repo_graph(
                                     print(f"[build_repo_graph] Inherits edge failed for {sub} -> {base}: {str(e)}; falling back to default edge");
                                     sub ++> base;
                                 }
+                                # Always cache for query helpers
+                                repo_node.ccg_inherits.append({"sub": sub, "base": base, "type": itype});
                             } else {
                                 # Use default edge and cache for later
                                 sub ++> base;
@@ -224,6 +228,8 @@ def build_repo_graph(
                             print(f"[build_repo_graph] Imports edge failed for {mod_src} -> {tgt}: {str(e)}; falling back to default edge");
                             mod_src ++> tgt;
                         }
+                        # Always cache for query helpers
+                        repo_node.ccg_imports.append({"src": mod_src, "dst": tgt, "alias": al, "import_type": itype});
                     } else {
                         # Use default edge and cache for later
                         mod_src ++> tgt;
@@ -292,6 +298,19 @@ walker EdgeBuilder {
     }
 }
 
+
+# Small helpers to keep ordering logic declarative and DRY
+# Insert entry into lst so that lst stays sorted by key (descending)
+def __insort_desc(lst: list, entry: dict, key: str) -> None {
+    inserted = False; i = 0;
+    while i < len(lst) {
+        cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
+        if entry.get(key, 0) > cur { lst.insert(i, entry); inserted = True; break; }
+        i += 1;
+    }
+    if not inserted { lst.append(entry); }
+}
+
 # Utility function: compute stats from a Repository node (no traversal needed)
 # Returns a dict similar to agents.CodeAnalyzer.basic_stats, plus CCG counts if available
 # top_n controls truncation for top files lists
@@ -341,29 +360,13 @@ def collect_stats_from_repo(repo: Repository, top_n: int = 10) -> dict {
             # Track top N by size for code files
             if ("size" in item) {
                 sz = item["size"];
-                inserted = False; i = 0;
-                while i < len(top_size) {
-                    if sz > top_size[i]["size"] {
-                        top_size.insert(i, {"path": p, "size": sz});
-                        inserted = True; break;
-                    }
-                    i += 1;
-                }
-                if not inserted { top_size.append({"path": p, "size": sz}); }
+                __insort_desc(top_size, {"path": p, "size": sz}, "size");
                 if len(top_size) > top_n { top_size.pop(); }
             }
             # Track top N by lines for code files if provided
             if ("lines" in item) {
                 ln = item["lines"];
-                inserted2 = False; j = 0;
-                while j < len(top_lines) {
-                    if ln > top_lines[j]["lines"] {
-                        top_lines.insert(j, {"path": p, "lines": ln});
-                        inserted2 = True; break;
-                    }
-                    j += 1;
-                }
-                if not inserted2 { top_lines.append({"path": p, "lines": ln}); }
+                __insort_desc(top_lines, {"path": p, "lines": ln}, "lines");
                 if len(top_lines) > top_n { top_lines.pop(); }
             }
         } elif ("type" in item) and item["type"] == "Doc" {
@@ -428,21 +431,10 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
             try { if ("size" in item) { entry["size"] = item["size"]; } } except Exception as e { }
             try { if ("language" in item) { entry["language"] = item["language"]; } } except Exception as e { }
             # Insert by lines
-            inserted = False; i = 0;
-            while i < len(top_lines) {
-                if ln > top_lines[i]["lines"] { top_lines.insert(i, entry); inserted = True; break; }
-                i += 1;
-            }
-            if not inserted { top_lines.append(entry); }
+            __insort_desc(top_lines, entry, "lines");
             if len(top_lines) > top_n { top_lines.pop(); }
             # Insert by size
-            inserted2 = False; j = 0;
-            while j < len(top_size) {
-                cur = 0; try { if ("size" in top_size[j]) { cur = top_size[j]["size"]; } } except Exception as e { cur = 0; }
-                if sz > cur { top_size.insert(j, entry); inserted2 = True; break; }
-                j += 1;
-            }
-            if not inserted2 { top_size.append(entry); }
+            __insort_desc(top_size, entry, "size");
             if len(top_size) > top_n { top_size.pop(); }
         }
     }
@@ -476,6 +468,7 @@ walker StatsCollector {
         visitor.stats = collect_stats_from_repo(here, 10);
         # Persist on repo node for reuse
         try { here.stats = visitor.stats; } except Exception as e { }
+
         report visitor.stats;
     }
 }
