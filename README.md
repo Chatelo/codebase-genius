@@ -80,8 +80,6 @@ uv run streamlit run app.py
 
 The UI will open at `http://localhost:8501`
 
-**👉 See [QUICKSTART.md](QUICKSTART.md) for detailed setup instructions**
-
 ---
 
 ## 📖 Usage
@@ -213,8 +211,6 @@ codebase-genius/
 │   ├── .streamlit/         # Streamlit config
 │   ├── app.py              # Main UI
 │   └── README.md           # Frontend docs
-├── QUICKSTART.md           # Quick start guide
-├── PROGRESS.md             # Implementation progress
 └── README.md               # This file
 ```
 
@@ -300,65 +296,10 @@ See real examples of Codebase Genius in action:
 
 See **[outputs/README.md](outputs/README.md)** for details on interpreting sample outputs.
 
----
-
-## 📚 Documentation
-
-- **[QUICKSTART.md](QUICKSTART.md)**: Get started in 5 minutes
-- **[PROGRESS.md](PROGRESS.md)**: Implementation progress and roadmap
-- **[backend/README.md](backend/README.md)**: Backend API documentation
-- **[frontend/README.md](frontend/README.md)**: Frontend UI documentation
-
----
-
-## 🗺️ Roadmap
-
-### ✅ Completed
-- Deep repository analysis with filtering
-- AI-powered documentation generation
-- Rich statistics and visualizations
-- Streamlit web UI
-- Graph architecture foundation
-- **Diagram generation (Mermaid)** ✨
-- **Call graph, class hierarchy, and module dependency diagrams** ✨
-- **README extraction and summarization** ✨
-- **Sample outputs with real repositories** ✨
-
-### 🚧 In Progress
-- Graph traversal walkers
-- Enhanced entity extraction with tree-sitter
-
-### 📋 Planned
-- Incremental updates
-- Multi-repository analysis
-- Code search and navigation
-- Prioritized analysis (entry-point detection)
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
----
 
 ## 📄 License
 
 MIT License - see LICENSE file for details
-
----
-
-## 🙏 Acknowledgments
-
-- **JacLang**: Object-Spatial Programming language
-- **Streamlit**: Beautiful web UI framework
-- **OpenAI**: GPT models for documentation generation
-- **tree-sitter**: Universal code parser
 
 ---
 
