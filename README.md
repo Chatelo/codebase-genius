@@ -251,6 +251,85 @@ curl -sX POST http://localhost:8000/walker/api_ccg_callers \
 - Results can be copied/downloaded from the UI.
 
 
+## 🧭 Graph Traversal API (Stats + Docs)
+
+Two additional public walkers expose graph-derived aggregates. Base URL: `http://localhost:8000`.
+
+- POST `/walker/api_graph_stats` — compute repository stats via the built graph
+- POST `/walker/api_graph_docs` — collect documentation-oriented aggregates
+
+Notes
+- `depth`: "deep" builds a fuller graph; "standard" is lighter.
+- Success responses include an `error` string for non‑fatal graph issues.
+
+### Graph Stats
+Request
+```json
+{
+  "repo_url": "https://github.com/org/repo",
+  "depth": "deep",
+  "top_n": 10
+}
+```
+Success response (shape)
+```json
+{
+  "status": "success",
+  "repo_url": "...",
+  "stats": {
+    "files": 0,
+    "code_files": 0,
+    "docs": 0,
+    "tests_files": 0,
+    "examples_files": 0,
+    "languages": { "python": 4 },
+    "top_dirs": { "src": 12 },
+    "top_dirs_code": { "src": 10 },
+    "top_files_by_size": [{ "path": "src/a.py", "size": 12345 }],
+    "top_files_by_lines": [{ "path": "src/a.py", "lines": 420 }],
+    "ccg_counts": { "calls": 0, "inherits": 0, "imports": 0 }
+  },
+  "error": ""
+}
+```
+
+### Graph Docs
+Request
+```json
+{
+  "repo_url": "https://github.com/org/repo",
+  "depth": "deep",
+  "top_n": 10
+}
+```
+Success response (shape)
+```json
+{
+  "status": "success",
+  "repo_url": "...",
+  "docs": {
+    "top_files": [{ "path": "src/a.py", "lines": 420 }],
+    "api_classes": ["pkg.mod.Base", "pkg.mod.Service"],
+    "total_functions": 123
+  },
+  "error": ""
+}
+```
+
+### cURL examples
+```bash
+# Graph Stats
+curl -sX POST http://localhost:8000/walker/api_graph_stats \
+  -H 'Content-Type: application/json' \
+  -d '{"repo_url":"https://github.com/org/repo","depth":"deep","top_n":10}' | jq
+
+# Graph Docs
+curl -sX POST http://localhost:8000/walker/api_graph_docs \
+  -H 'Content-Type: application/json' \
+  -d '{"repo_url":"https://github.com/org/repo","depth":"deep","top_n":10}' | jq
+```
+
+
 ## 🏗️ Architecture
 
 ### Tech Stack
