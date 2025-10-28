@@ -891,7 +891,8 @@ def main():
                             with col_a:
                                 st.download_button("⬇️ Download Graph Stats (JSON)", data=json.dumps(stats_payload, indent=2), file_name="graph_stats.json", mime="application/json")
                             with col_b:
-                                with st.expander("View raw JSON", expanded=False):
+                                show_gstats_json = st.checkbox("Show raw JSON", key="gstats_show_json")
+                                if show_gstats_json:
                                     st.code(json.dumps(stats_payload, indent=2), language="json")
 
                     # Graph Docs (Walker)
@@ -977,7 +978,8 @@ def main():
                             with col_a:
                                 st.download_button("⬇️ Download Graph Docs (JSON)", data=json.dumps(doc_payload, indent=2), file_name="graph_docs.json", mime="application/json")
                             with col_b:
-                                with st.expander("View raw JSON", expanded=False):
+                                show_gdocs_json = st.checkbox("Show raw JSON", key="gdocs_show_json")
+                                if show_gdocs_json:
                                     st.code(json.dumps(doc_payload, indent=2), language="json")
 
                     # Function Callers
