@@ -63,13 +63,14 @@ Automatically analyze any GitHub repository and generate comprehensive, high-qua
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/Chatelo/codebase-genius.git
 cd codebase-genius
 
 # Set up backend
 cd backend
 uv sync
 export OPENAI_API_KEY="your-api-key-here"
+#You may use Geminias they have generous free tier
 uv run jac serve main.jac --port 8000
 
 # In a new terminal, set up frontend
