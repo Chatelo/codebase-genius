@@ -105,6 +105,11 @@ walker generate_docs {
         stats = overview["stats"];
         entities = {};
         if "entities" in overview { entities = overview["entities"]; }
+        plan = {};
+        scheduler = {};
+        if "plan" in overview { plan = overview["plan"]; }
+        if "scheduler" in overview { scheduler = overview["scheduler"]; }
+
         if self.job_id != "" {
             try { cache.set("progress", self.repo_url, {"percent": 60, "stage": "overview", "message": "Repository analyzed", "step_index": 3, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
         }
@@ -170,6 +175,48 @@ walker generate_docs {
         if readme_summary != "" { readme_context = f" README: {readme_summary}"; }
 
         extra_context = f"Files={stats['files']}, Code={stats['code_files']}, Python={stats['python_files']}, Docs={stats['docs']}, Tests={stats['tests_files']}(code={t_code}), Examples={stats['examples_files']}(code={e_code}), Languages={langs}, TopDirsByCode={tdirs}, TopN={self.top_n}. Diagrams={self.include_diagrams}.{readme_context}";
+
+        # Briefly include plan/scheduler hints for LLM if available (non-intrusive)
+        ep_summary = "";
+        try {
+            eps = [];
+            if "entry_points" in plan { eps = plan["entry_points"]; }
+            # show up to 5 entry points
+            i = 0;
+            for ep in eps {
+                if i >= 5 { break; }
+                p = "";
+                try { p = ep.get("path", ""); } except Exception as e { p = ""; }
+                if p != "" { if ep_summary != "" { ep_summary += ", "; } ep_summary += p; i += 1; }
+            }
+        } except Exception as e { ep_summary = ""; }
+
+        sched_summary = "";
+        try {
+            iters = [];
+            if "iterations" in scheduler { iters = scheduler["iterations"]; }
+            # take first 2 iterations, up to 5 files each
+            j = 0;
+            for it in iters {
+                if j >= 2 { break; }
+                sel = [];
+                try { sel = it.get("selected", []); } except Exception as e { sel = []; }
+                k = 0; sel_str = "";
+                for f in sel {
+                    if k >= 5 { break; }
+                    if sel_str != "" { sel_str += ", "; }
+                    sel_str += f; k += 1;
+                }
+                if sel_str != "" {
+                    if sched_summary != "" { sched_summary += " | "; }
+                    sched_summary += sel_str;
+                }
+                j += 1;
+            }
+        } except Exception as e { sched_summary = ""; }
+
+        if ep_summary != "" { extra_context += f" EntryPoints=[{ep_summary}]"; }
+        if sched_summary != "" { extra_context += f" SchedulerBatches=[{sched_summary}]"; }
 
         # Build Top Files (by lines) summary
         top_files_str = "";
@@ -318,6 +365,8 @@ walker generate_docs {
             "file_tree": rtree,
             "stats": stats,
             "entities": rentities,
+            "plan": plan,
+            "scheduler": scheduler,
             "ccg": ccg,
             "documentation": doc,
             "diagrams": diagrams,
