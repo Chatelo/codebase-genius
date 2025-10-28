@@ -3,6 +3,7 @@
 import from graph.nodes { Repository, Function, Class, Module }
 
 import from utils.ts_analyze { extract_entities }
+import from graph.builders { compute_top_files }
 
 
 #* CCG Query helpers operating on Repository.ccg_* caches (no traversal required) *#
@@ -155,6 +156,12 @@ def basic_stats(file_tree: list, top_n: int = 10) -> dict {
             }
         }
     }
+    # Unify top-lists using centralized helper
+    try {
+        tmp = compute_top_files(file_tree, top_n);
+        top_lines = tmp.get("by_lines", top_lines);
+        top_size = tmp.get("by_size", top_size);
+    } except Exception as e { }
     return {
         "files": total,
         "jac_files": jac_files,

@@ -13,12 +13,12 @@ import from utils.ts_analyze { extract_entities }
 # for a separate EdgeBuilder walker pass.
 *#
 def build_repo_graph(
-    root_node: any,
+    root_node: dict,
     repo_url: str,
     files: list,
     entities: dict,
     build_typed_edges: bool = True
-) -> any {
+) {
     # Create Repository node (instantiate first; then attach to root if possible)
     repo_node = Repository(url=repo_url);
     try { root_node ++> repo_node; } except Exception as e { }
@@ -249,6 +249,188 @@ def build_repo_graph(
     return repo_node;
 }
 
+
+# Walker wrapper for building a repo graph the Jac way (API-compatible)
+walker GraphBuilder {
+    has repo_url: str = "";
+    has files: list = [];
+    has entities: dict = {};
+    has build_typed_edges: bool = True;
+    has repo_node: Repository = None;
+
+    can build with `root entry {
+        # Build repository graph directly (walker-native)
+        repo_node = Repository(url=self.repo_url);
+        try { here ++> repo_node; } except Exception as e { }
+
+        # Derive name from URL
+        url_parts = self.repo_url.rstrip('/').split('/');
+        repo_node.name = (url_parts[-1] if len(url_parts) > 0 else "");
+
+        # Inputs with defensive defaults
+        files0 = self.files; if files0 == None { files0 = []; }
+        ents0 = self.entities; if ents0 == None { ents0 = {"files": []}; }
+
+        # Maps
+        dir_nodes = {}; file_nodes = {}; func_by_file = {};
+        func_global = {}; cls_global = {}; mod_global = {}; mod_of_file = {};
+
+        # Directories, CodeFiles, Modules
+        for f in files0 {
+            fpath = ""; lang = ""; sz = 0; ln = 0;
+            if "path" in f { fpath = f["path"]; }
+            if "language" in f { lang = f["language"]; }
+            if "size" in f { sz = f["size"]; }
+            if "lines" in f { ln = f["lines"]; }
+
+            # Directory hierarchy
+            parts = fpath.split('/'); parent = repo_node;
+            if len(parts) > 1 {
+                accum = ""; i = 0;
+                while i < len(parts) - 1 {
+                    if accum != "" { accum += "/"; }
+                    accum += parts[i];
+                    if accum not in dir_nodes {
+                        d = Directory(path=accum, name=parts[i]);
+                        parent ++> d; dir_nodes[accum] = d; parent = d;
+                    } else { parent = dir_nodes[accum]; }
+                    i += 1;
+                }
+            }
+
+            # CodeFile
+            cf = CodeFile(path=fpath, language=lang, size=sz, lines=ln);
+            parent ++> cf; file_nodes[fpath] = cf; func_by_file[fpath] = {};
+
+            lp = fpath.lower();
+            if ("test" in lp) or ("spec" in lp) { cf.is_test = True; }
+            if ("example" in lp) or ("demo" in lp) { cf.is_example = True; }
+            if (lang == "markdown") or (lang == "rst") or (".md" in lp) or (".rst" in lp) { cf.is_doc = True; }
+
+            # Module from path
+            mod_name = fpath.replace('/', '.'); mnode = None;
+            if mod_name in mod_global { mnode = mod_global[mod_name]; }
+            else {
+                mnode = Module(name=mod_name, import_path=mod_name, is_external=False);
+                repo_node ++> mnode; mod_global[mod_name] = mnode;
+            }
+            mod_of_file[fpath] = mnode;
+        }
+
+        # Functions & Classes
+        if "files" in ents0 {
+            for fe in ents0["files"] {
+                rel = "";
+                if "file" in fe {
+                    ap = fe["file"]; for k in file_nodes { if k in ap { rel = k; break; } }
+                }
+                if (rel == "") or (rel not in file_nodes) { continue; }
+                cf = file_nodes[rel];
+
+                if "functions" in fe {
+                    for fn in fe["functions"] {
+                        fn_node = Function(name=fn);
+                        cf ++> fn_node; func_by_file[rel][fn] = fn_node;
+                        if fn not in func_global { func_global[fn] = fn_node; }
+                    }
+                }
+                if "classes" in fe {
+                    for cn in fe["classes"] {
+                        c_node = Class(name=cn);
+                        cf ++> c_node; if cn not in cls_global { cls_global[cn] = c_node; }
+                    }
+                }
+            }
+        }
+
+        # Relationships
+        edge_stats = {"calls": 0, "inherits": 0, "imports": 0};
+        if "files" in ents0 {
+            for fe2 in ents0["files"] {
+                rel = ""; mod_src = None;
+                if "file" in fe2 {
+                    ap = fe2["file"]; for k in file_nodes { if k in ap { rel = k; break; } }
+                }
+                if rel == "" { continue; }
+                if rel in mod_of_file { mod_src = mod_of_file[rel]; }
+
+                # Calls
+                if ("calls" in fe2) and (rel in func_by_file) {
+                    for c in fe2["calls"] {
+                        caller = None; callee = None;
+                        if ("caller" in c) and (c["caller"] in func_by_file[rel]) { caller = func_by_file[rel][c["caller"]]; }
+                        if ("callee" in c) {
+                            if c["callee"] in func_global { callee = func_global[c["callee"]]; }
+                            else { if c["callee"] in cls_global { callee = cls_global[c["callee"]]; } }
+                        }
+                        if caller != None and callee != None {
+                            ln = 0; ctype = "direct"; if "line" in c { ln = c["line"]; }
+                            if self.build_typed_edges {
+                                try { caller +>: Calls(line_number=ln, call_type=ctype) :+> callee; edge_stats["calls"] += 1; }
+                                except Exception as e { caller ++> callee; }
+                                repo_node.ccg_calls.append({"caller": caller, "callee": callee, "line": ln, "type": ctype});
+                            } else {
+                                caller ++> callee; repo_node.ccg_calls.append({"caller": caller, "callee": callee, "line": ln, "type": ctype});
+                            }
+                        }
+                    }
+                }
+
+                # Inherits
+                if "inherits" in fe2 {
+                    for inh in fe2["inherits"] {
+                        if ("class" in inh) and ("base" in inh) {
+                            sub = None; base = None;
+                            if inh["class"] in cls_global { sub = cls_global[inh["class"]]; }
+                            if inh["base"] in cls_global { base = cls_global[inh["base"]]; }
+                            if sub != None and base != None {
+                                itype = "extends";
+                                if self.build_typed_edges {
+                                    try { sub +>: Inherits(inheritance_type=itype) :+> base; edge_stats["inherits"] += 1; }
+                                    except Exception as e { sub ++> base; }
+                                    repo_node.ccg_inherits.append({"sub": sub, "base": base, "type": itype});
+                                } else {
+                                    sub ++> base; repo_node.ccg_inherits.append({"sub": sub, "base": base, "type": itype});
+                                }
+                            }
+                        }
+                    }
+                }
+
+                # Imports
+                if (mod_src != None) and ("imports" in fe2) {
+                    for imp in fe2["imports"] {
+                        tgt_name = ""; if "module" in imp { tgt_name = imp["module"]; }
+                        if tgt_name == "" { continue; }
+                        tgt = None;
+                        if tgt_name in mod_global { tgt = mod_global[tgt_name]; }
+                        else {
+                            tgt = Module(name=tgt_name, import_path=tgt_name, is_external=True);
+                            repo_node ++> tgt; mod_global[tgt_name] = tgt;
+                        }
+                        al = ""; itype = "import";
+                        if "alias" in imp { al = imp["alias"]; }
+                        if "import_type" in imp { itype = imp["import_type"]; }
+                        if self.build_typed_edges {
+                            try { mod_src +>: Imports(import_type=itype, alias=al) :+> tgt; edge_stats["imports"] += 1; }
+                            except Exception as e { mod_src ++> tgt; }
+                            repo_node.ccg_imports.append({"src": mod_src, "dst": tgt, "alias": al, "import_type": itype});
+                        } else {
+                            mod_src ++> tgt; repo_node.ccg_imports.append({"src": mod_src, "dst": tgt, "alias": al, "import_type": itype});
+                        }
+                    }
+                }
+            }
+        }
+
+        # Persist stats and file tree snapshot
+        if self.build_typed_edges { repo_node.ccg_stats = edge_stats; try { repo_node.file_tree = files0; } except Exception as e { } }
+
+        visitor.repo_node = repo_node;
+        report {"repo_node": visitor.repo_node};
+    }
+}
+
 #* EdgeBuilder: materializes typed edges (Calls, Inherits, Imports) from cached CCG relations *#
 walker EdgeBuilder {
     has created: dict = {"calls": 0, "inherits": 0, "imports": 0};
@@ -310,6 +492,26 @@ def __insort_desc(lst: list, entry: dict, key: str) -> None {
     }
     if not inserted { lst.append(entry); }
 }
+
+# Centralized: compute top files by lines and size from a file_tree
+# Returns {"by_lines": [...], "by_size": [...]}
+def compute_top_files(file_tree: list, top_n: int = 10) -> dict {
+    top_lines = []; top_size = [];
+    for item in file_tree {
+        if ("type" in item) and (item["type"] == "CodeFile") {
+            p = item.get("path", ""); ln = item.get("lines", 0); sz = item.get("size", 0);
+            entry = {"path": p, "lines": ln};
+            try { if ("size" in item) { entry["size"] = item["size"]; } } except Exception as e { }
+            try { if ("language" in item) { entry["language"] = item["language"]; } } except Exception as e { }
+            __insort_desc(top_lines, entry, "lines");
+            if len(top_lines) > top_n { top_lines.pop(); }
+            __insort_desc(top_size, entry, "size");
+            if len(top_size) > top_n { top_size.pop(); }
+        }
+    }
+    return {"by_lines": top_lines, "by_size": top_size};
+}
+
 
 # Utility function: compute stats from a Repository node (no traversal needed)
 # Returns a dict similar to agents.CodeAnalyzer.basic_stats, plus CCG counts if available
@@ -421,23 +623,10 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
     files = [];
     try { if "file_tree" in repo { files = repo.file_tree; } } except Exception as e { files = []; }
 
-    # Top files by lines and size, include optional metadata (size, language) when available
-    top_lines = [];
-    top_size = [];
-    for item in files {
-        if ("type" in item) and item["type"] == "CodeFile" {
-            p = item.get("path", ""); ln = item.get("lines", 0); sz = item.get("size", 0);
-            entry = {"path": p, "lines": ln};
-            try { if ("size" in item) { entry["size"] = item["size"]; } } except Exception as e { }
-            try { if ("language" in item) { entry["language"] = item["language"]; } } except Exception as e { }
-            # Insert by lines
-            __insort_desc(top_lines, entry, "lines");
-            if len(top_lines) > top_n { top_lines.pop(); }
-            # Insert by size
-            __insort_desc(top_size, entry, "size");
-            if len(top_size) > top_n { top_size.pop(); }
-        }
-    }
+    # Top files by lines and size computed via centralized helper
+    tmp = compute_top_files(files, top_n);
+    top_lines = tmp.get("by_lines", []);
+    top_size = tmp.get("by_size", []);
 
     # API classes + total functions from entities
     api_classes = [];
