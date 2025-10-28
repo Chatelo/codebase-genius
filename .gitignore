@@ -4,3 +4,4 @@
 backend/.cache/*
 outputs/
 doc/
+scripts

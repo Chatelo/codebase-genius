@@ -175,31 +175,7 @@ def call_ccg_dependencies(repo_url: str, module_name: str, depth: str = "deep") 
 
 
 # --- Graph Walker API clients ---
-
-def call_graph_stats(repo_url: str, depth: str = "deep", top_n: int = 10) -> Dict[str, Any]:
-    try:
-        resp = requests.post(
-            f"{BACKEND_URL}/walker/api_graph_stats",
-            json={"repo_url": repo_url, "depth": depth, "top_n": top_n},
-            timeout=120,
-        )
-        resp.raise_for_status()
-        return _extract_report_payload(resp.json())
-    except Exception as e:
-        return {"status": "error", "message": f"graph_stats failed: {e}"}
-
-
-def call_graph_docs(repo_url: str, depth: str = "deep", top_n: int = 10) -> Dict[str, Any]:
-    try:
-        resp = requests.post(
-            f"{BACKEND_URL}/walker/api_graph_docs",
-            json={"repo_url": repo_url, "depth": depth, "top_n": top_n},
-            timeout=120,
-        )
-        resp.raise_for_status()
-        return _extract_report_payload(resp.json())
-    except Exception as e:
-        return {"status": "error", "message": f"graph_docs failed: {e}"}
+from api_client_graph import call_graph_stats, call_graph_docs
 
 
 def build_micro_mermaid_function(func_name: str, callers: List[Dict[str, Any]], callees: List[Dict[str, Any]], max_nodes: int = 5) -> str:
@@ -892,6 +868,7 @@ def main():
                         refresh_stats = st.button("🔄 Refresh Graph Stats", key="ccg_refresh_gstats")
                         if refresh_stats:
                             st.session_state.ccg_cache.pop(gk, None)
+                        cache_hit = gk in st.session_state.ccg_cache
                         data_st = st.session_state.ccg_cache.get(gk)
                         if data_st is None:
                             with st.spinner("Computing graph stats…"):
@@ -900,14 +877,22 @@ def main():
                         if data_st.get("status") != "success":
                             st.error(data_st.get("message", "Failed to compute graph stats"))
                         else:
-                            st.success("Graph stats ready")
+                            msg = "Graph stats ready"
+                            if cache_hit:
+                                msg = _add_cached_chip(msg)
+                            st.success(msg)
                             stats_payload = data_st.get("stats") or {}
                             # Reuse the existing stats renderer if payload aligns
                             try:
                                 render_stats(stats_payload)
                             except Exception:
                                 st.json(stats_payload)
-                            st.download_button("⬇️ Download Graph Stats (JSON)", data=json.dumps(stats_payload, indent=2), file_name="graph_stats.json", mime="application/json")
+                            col_a, col_b = st.columns([1, 1])
+                            with col_a:
+                                st.download_button("⬇️ Download Graph Stats (JSON)", data=json.dumps(stats_payload, indent=2), file_name="graph_stats.json", mime="application/json")
+                            with col_b:
+                                with st.expander("View raw JSON", expanded=False):
+                                    st.code(json.dumps(stats_payload, indent=2), language="json")
 
                     # Graph Docs (Walker)
                     with st.expander("📝 Graph Docs (Walker)", expanded=False):
@@ -915,6 +900,7 @@ def main():
                         refresh_docs = st.button("🔄 Refresh Graph Docs", key="ccg_refresh_gdocs")
                         if refresh_docs:
                             st.session_state.ccg_cache.pop(gkd, None)
+                        cache_hit = gkd in st.session_state.ccg_cache
                         data_doc = st.session_state.ccg_cache.get(gkd)
                         if data_doc is None:
                             with st.spinner("Collecting documentation aggregates…"):
@@ -923,19 +909,30 @@ def main():
                         if data_doc.get("status") != "success":
                             st.error(data_doc.get("message", "Failed to collect doc aggregates"))
                         else:
+                            msg = "Graph docs ready"
+                            if cache_hit:
+                                msg = _add_cached_chip(msg)
+                            st.success(msg)
                             doc_payload = data_doc.get("docs") or {}
                             c1, c2, c3 = st.columns([1, 1, 2])
                             with c1:
                                 st.metric("Total Functions", doc_payload.get("total_functions", 0))
                             with c2:
                                 st.metric("API Classes", len(doc_payload.get("api_classes", [])))
-                            st.caption("Top Files by Lines (from walker)")
-                            for idx, it in enumerate(doc_payload.get("top_files", [])[:tn], 1):
-                                st.text(f"{idx}. {it.get('path','unknown')} ({it.get('lines',0):,} lines)")
+                            # Top files table
+                            top_files = doc_payload.get("top_files", [])[:tn]
+                            if top_files:
+                                st.caption("Top Files by Lines (from walker)")
+                                st.table(top_files)
                             if doc_payload.get("api_classes"):
                                 st.caption("API Classes")
                                 st.table([{ "Class": c } for c in doc_payload.get("api_classes", [])[:tn]])
-                            st.download_button("⬇️ Download Graph Docs (JSON)", data=json.dumps(doc_payload, indent=2), file_name="graph_docs.json", mime="application/json")
+                            col_a, col_b = st.columns([1, 1])
+                            with col_a:
+                                st.download_button("⬇️ Download Graph Docs (JSON)", data=json.dumps(doc_payload, indent=2), file_name="graph_docs.json", mime="application/json")
+                            with col_b:
+                                with st.expander("View raw JSON", expanded=False):
+                                    st.code(json.dumps(doc_payload, indent=2), language="json")
 
                     # Function Callers
                     with st.expander("🧰 Function Callers", expanded=False):

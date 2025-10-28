@@ -262,6 +262,11 @@ Notes
 - `depth`: "deep" builds a fuller graph; "standard" is lighter.
 - Success responses include an `error` string for non‑fatal graph issues.
 
+
+Dev: CLI smoke test
+- Run a quick check against a running backend:
+  - `python scripts/smoke_graph.py --base-url http://localhost:8000 --repo-url https://github.com/org/repo`
+
 ### Graph Stats
 Request
 ```json
