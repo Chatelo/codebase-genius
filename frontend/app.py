@@ -672,13 +672,9 @@ def main():
         - ⚡ **Performance Controls**: Limit files and file sizes for faster analysis
         - 📥 **Export**: Download documentation as Markdown
 
-        ### Example Repositories to Try
+        ### Example Repo
 
         - `https://github.com/karpathy/micrograd` - Small educational ML library
-        - `https://github.com/pallets/flask` - Popular Python web framework
-
-
-        - `https://github.com/fastapi/fastapi` - Modern Python API framework
         """)
 
 if __name__ == "__main__":
