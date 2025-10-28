@@ -105,6 +105,54 @@ def format_file_size(size_bytes: int) -> str:
         size_bytes /= 1024.0
     return f"{size_bytes:.1f} TB"
 
+# Stage icons and animated activity (lightweight; no backend cost)
+STAGE_LABELS = {
+    "start": ("🚀", "starting"),
+    "clone": ("⬇️", "cloning"),
+    "scan": ("🧭", "scanning"),
+    "parse": ("🧠", "parsing"),
+    "stats": ("🧮", "statistics"),
+    "graph": ("🧱", "graph"),
+    "docs": ("📝", "docs"),
+    "diagrams": ("📈", "diagrams"),
+    "done": ("✅", "done"),
+    "error": ("❌", "error"),
+}
+SPINNER_FRAMES = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+CLONE_PHASES = [
+    "🔗 Connecting to GitHub",
+    "🧮 Counting objects",
+    "📦 Receiving objects",
+    "🧩 Resolving deltas",
+    "📁 Checking out",
+]
+
+def animated_status(stage: str, base_message: str, job_id: str) -> str:
+    key = f"anim_{job_id}"
+    cnt = st.session_state.get(key, 0)
+    st.session_state[key] = cnt + 1
+    frame = SPINNER_FRAMES[cnt % len(SPINNER_FRAMES)]
+    if stage == "clone":
+        phase = CLONE_PHASES[(cnt // 3) % len(CLONE_PHASES)]
+        return f"{phase} {frame}"
+    if stage == "start":
+        return f"Preparing workspace {frame}"
+    if stage == "scan":
+        return f"Scanning repository structure {frame}"
+    if stage == "parse":
+        return f"Extracting entities {frame}"
+    if stage == "stats":
+        return f"Aggregating statistics {frame}"
+    if stage == "graph":
+        return f"Building code graph {frame}"
+    if stage == "docs":
+        return f"Generating documentation {frame}"
+    if stage == "diagrams":
+        return f"Rendering diagrams {frame}"
+    if stage == "error":
+        return base_message or "An error occurred"
+    return f"{base_message} {frame}" if base_message else f"Working {frame}"
+
 def render_stats(stats: Dict[str, Any]):
     """Render statistics in a nice grid layout."""
     st.subheader("📊 Repository Statistics")
@@ -375,6 +423,13 @@ def main():
 
         progress_bar = st.progress(0)
         status_box = st.empty()
+        activity_box = st.empty()
+        last_stage = ""
+        st.session_state[f"log_{job_id}"] = []
+
+        # Reset animation counter for this job
+        st.session_state[f"anim_{job_id}"] = 0
+
 
         # Poll progress until the background thread finishes
         last_percent = 0
@@ -383,12 +438,25 @@ def main():
             if isinstance(prog_resp, dict):
                 prog = prog_resp.get("progress") or {}
                 percent = int(prog.get("percent", last_percent))
-                stage = prog.get("stage", "starting")
+                stage = prog.get("stage", "start")
                 message = prog.get("message", "Working...")
+                # Update lightweight activity log (last 5 events)
+                if (stage != last_stage) or (percent > last_percent):
+                    label_for_log = STAGE_LABELS.get(stage, ("", stage))[1]
+                    line = f"{percent}% • {label_for_log} — {message}"
+                    log_key = f"log_{job_id}"
+                    hist = st.session_state.get(log_key, [])
+                    hist.append(line)
+                    st.session_state[log_key] = hist[-5:]
+                    activity_box.caption("  ·  ".join(st.session_state[log_key]))
+                    last_stage = stage
+
                 percent = max(percent, last_percent)
                 percent = min(percent, 99)
                 progress_bar.progress(percent)
-                status_box.info(f"{percent}% • {stage} — {message}")
+                icon, label = STAGE_LABELS.get(stage, ("⏳", stage))
+                animated = animated_status(stage, message, job_id)
+                status_box.info(f"{icon} {percent}% • {label} — {animated}")
                 last_percent = percent
             time.sleep(1.0)
 
@@ -396,7 +464,7 @@ def main():
         t.join(timeout=1.0)
         result = result_container.get("result") or {"status": "error", "message": "Failed to get result"}
         progress_bar.progress(100)
-        status_box.success("100% • done — Completed")
+        status_box.success("✅ 100% • done — Completed")
 
 
         # Display results

@@ -50,6 +50,10 @@ def build_overview(
         }
 
         try {
+            # Progress: cloning start (write before blocking clone)
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 5, "stage": "clone", "message": "Cloning repository (shallow)"}, job_id=job_id); } except Exception as e { }
+            }
             repo_path = clone_or_open_repo(repo_url);
             # Progress: repo cloned/opened
             if job_id != "" {
