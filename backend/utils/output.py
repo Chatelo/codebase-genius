@@ -117,3 +117,90 @@ def save_results_to_disk(
 
     return saved
 
+
+def build_structured_markdown(
+    repo_url: str,
+    overview: Optional[Dict] = None,
+    api_surface: str = "",
+    ccg_counts: Optional[Dict[str, int]] = None,
+    top_files_str: str = "",
+    diagrams: Optional[Dict[str, str]] = None,
+    ccg_context: str = "",
+    ccg_mermaid: str = "",
+    include_diagrams: bool = False,
+    doc_overview: str = "",
+) -> str:
+    """Compose a deterministic Markdown document with required sections.
+
+    Sections produced:
+      - # Documentation for <repo_url>
+      - ## Project Overview
+      - ## Installation
+      - ## Usage
+      - ## API Reference (summary)
+      - ## Diagrams (mermaid blocks if enabled and present)
+      - ## Citations (CCG)
+    """
+    title_md = f"# Documentation for {repo_url}\n\n"
+
+    # Overview
+    ov_text = (doc_overview or "").strip() or "No overview generated."
+    overview_md = "## Project Overview\n\n" + ov_text + "\n\n"
+
+    # Installation / Usage (extract from README sections if available)
+    inst_txt = ""; use_txt = ""
+    try:
+        if overview and isinstance(overview, dict):
+            rd = overview.get("readme") or {}
+            sections = rd.get("sections") or []
+            for sec in sections:
+                title = str(sec.get("title", "")).lower()
+                content = str(sec.get("content", ""))
+                if not inst_txt and ("install" in title):
+                    inst_txt = content
+                if not use_txt and ("usage" in title or "use" in title or "run" in title or "quick start" in title):
+                    use_txt = content
+    except Exception:
+        pass
+    inst_md = "## Installation\n\n" + (inst_txt or "Refer to the repository README for installation instructions.") + "\n\n"
+    use_md = "## Usage\n\n" + (use_txt or "Refer to the repository README for usage examples.") + "\n\n"
+
+    # API Reference
+    api_md = "## API Reference (summary)\n\n"
+    if api_surface:
+        api_md += api_surface + "\n"
+    if ccg_counts:
+        calls = ccg_counts.get("calls", 0)
+        inh = ccg_counts.get("inherits", 0)
+        imps = ccg_counts.get("imports", 0)
+        api_md += f"CCG counts — calls: {calls}, inherits: {inh}, imports: {imps}\n"
+    if top_files_str:
+        api_md += f"Top files by lines: {top_files_str}\n"
+    api_md += "\n"
+
+    # Diagrams
+    diagrams_md = "## Diagrams\n\n"
+    if include_diagrams:
+        try:
+            if diagrams and isinstance(diagrams, dict):
+                if diagrams.get("call_graph"):
+                    diagrams_md += f"```mermaid\n{diagrams['call_graph']}\n```\n\n"
+                if diagrams.get("class_hierarchy"):
+                    diagrams_md += f"```mermaid\n{diagrams['class_hierarchy']}\n```\n\n"
+                if diagrams.get("module_graph"):
+                    diagrams_md += f"```mermaid\n{diagrams['module_graph']}\n```\n\n"
+        except Exception:
+            diagrams_md += "Diagrams not available.\n\n"
+    else:
+        diagrams_md += "Diagrams disabled for this run.\n\n"
+
+    # Citations
+    cites_md = "## Citations (CCG)\n\n"
+    if ccg_context:
+        cites_md += ccg_context + "\n\n"
+    if ccg_mermaid:
+        cites_md += ccg_mermaid + "\n\n"
+
+    return title_md + overview_md + inst_md + use_md + api_md + diagrams_md + cites_md
+
+
