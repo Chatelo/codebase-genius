@@ -148,6 +148,183 @@ def _prioritize_entry_points(file_tree: list, top_n: int = 10) -> dict {
 
     return {"entry_points": entry_points, "analysis_order": analysis_order};
 }
+# --- Iterative analysis scheduler (plan→analyze→evaluate) ---
+# Uses entities (calls/imports) to rank files and propose iterative batches.
+
+def _match_rel_path(file_tree: list, abs_path: str) -> str {
+    # Find a file_tree path that appears as a substring of abs_path
+    if abs_path == None { return ""; }
+    ap = abs_path;
+    best = ""; best_len = 0;
+    for it in file_tree {
+        if ("type" in it) and (it["type"] == "CodeFile") {
+            rp = ""; if "path" in it { rp = it["path"]; }
+            if rp != "" and (rp in ap) {
+                if len(rp) > best_len { best = rp; best_len = len(rp); }
+            }
+        }
+    }
+    return best;
+}
+
+# Return scheduler result with iterations, coverage, and stop reason
+
+def _iterative_scheduler(file_tree: list, entities: dict, plan: dict, max_iters: int = 3, batch_size: int = 20, coverage_target: float = 0.6) -> dict {
+    # Index code files
+    code_paths = [];
+    lines_by_path = {};
+    for it in file_tree {
+        if ("type" in it) and (it["type"] == "CodeFile") {
+            p = it.get("path", "");
+            if p != "" { code_paths.append(p); lines_by_path[p] = it.get("lines", 0); }
+        }
+    }
+    total = len(code_paths);
+    if total == 0 { return {"iterations": [], "coverage": {"files_total": 0, "curve": [], "achieved": 0.0, "target": coverage_target, "selected_total": 0}, "stopped_reason": "no_code_files"}; }
+
+    # Build entity indices
+    func_to_files = {};         # name -> [rel_paths]
+    file_funcs = {};            # rel_path -> [fn]
+    module_by_file = {};        # rel_path -> module
+    module_to_file = {};        # module -> rel_path (first hit)
+
+    if (entities != None) and ("files" in entities) {
+        for fe in entities["files"] {
+            rel = _match_rel_path(file_tree, fe.get("file", ""));
+            if rel == "" { continue; }
+            # Functions
+            flist = fe.get("functions", []);
+            file_funcs[rel] = flist;
+            for fn in flist {
+                if fn not in func_to_files { func_to_files[fn] = []; }
+                func_to_files[fn].append(rel);
+            }
+            # Module
+            mod = fe.get("module", "");
+            if mod != "" {
+                module_by_file[rel] = mod;
+                if mod not in module_to_file { module_to_file[mod] = rel; }
+            }
+        }
+    }
+
+    # Initialize metrics per file
+    metrics = {};  # path -> dict
+    for pth in code_paths { metrics[pth] = {"in_calls": 0, "out_calls": 0, "in_imports": 0, "out_imports": 0, "score": 0}; }
+
+    # Calls fan-in/out
+    if (entities != None) and ("files" in entities) {
+        for fe2 in entities["files"] {
+            rel2 = _match_rel_path(file_tree, fe2.get("file", ""));
+            if rel2 == "" { continue; }
+            for c in fe2.get("calls", []) {
+                metrics[rel2]["out_calls"] += 1;
+                cal = c.get("callee", "");
+                if cal != "" and (cal in func_to_files) {
+                    for tgt in func_to_files[cal] {
+                        if tgt != rel2 { metrics[tgt]["in_calls"] += 1; }
+                    }
+                }
+            }
+        }
+    }
+
+    # Imports in/out (module-level)
+    if (entities != None) and ("files" in entities) {
+        for fe3 in entities["files"] {
+            rel3 = _match_rel_path(file_tree, fe3.get("file", ""));
+            if rel3 == "" { continue; }
+            for imp in fe3.get("imports", []) {
+                tgt_mod = imp.get("module", "");
+                if tgt_mod == "" { continue; }
+                tgt_file = "";
+                if tgt_mod in module_to_file { tgt_file = module_to_file[tgt_mod]; }
+                else {
+                    best_len = 0; best_file = "";
+                    for mk in module_to_file {
+                        if (tgt_mod.startswith(mk+".")) or (mk.startswith(tgt_mod+".")) or (mk == tgt_mod) {
+                            if len(mk) > best_len { best_len = len(mk); best_file = module_to_file[mk]; }
+                        }
+                    }
+                    tgt_file = best_file;
+                }
+                if tgt_file != "" and (tgt_file != rel3) {
+                    metrics[rel3]["out_imports"] += 1;
+                    metrics[tgt_file]["in_imports"] += 1;
+                }
+            }
+        }
+    }
+
+    # Entry-point boost
+    ep_set = {};
+    try {
+        if (plan != None) and ("entry_points" in plan) {
+            for ep in plan["entry_points"] { if ("path" in ep) { ep_set[ep["path"]] = ep.get("score", 0); } }
+        }
+    } except Exception as e { }
+
+    # Compute scores
+    for p in code_paths {
+        m = metrics[p];
+        ep_bonus = 0;
+        if p in ep_set { ep_bonus = 10; if ep_set[p] > 100 { ep_bonus = 15; } }
+        m["score"] = (3*m["in_calls"]) + (2*m["in_imports"]) + (1*m["out_calls"]) + (1*m["out_imports"]) + ep_bonus;
+        metrics[p] = m;
+    }
+
+    # Iterative batching
+    selected = {}; ordered = [];
+    coverage_curve = [];
+    reason = "";
+    it = 0;
+    while it < max_iters {
+        # Coverage
+        cov = 0.0;
+        try { cov = (1.0 * len(selected)) / (1.0 * total); } except Exception as e { cov = 0.0; }
+        coverage_curve.append(cov);
+        if cov >= coverage_target {
+            reason = "coverage_target_met"; break;
+        }
+        # Build candidates
+        cands = [];
+        for p2 in code_paths { if p2 not in selected { cands.append(p2); } }
+        if len(cands) == 0 { reason = "no_candidates"; break; }
+        # Sort by score desc, tie by lines desc
+        ranked = [];
+        for p3 in cands {
+            entry = {"path": p3, "score": metrics[p3]["score"], "lines": lines_by_path.get(p3, 0)};
+            # insertion sort
+            ins = False; i = 0;
+            while i < len(ranked) {
+                if (entry["score"] > ranked[i]["score"]) or ((entry["score"] == ranked[i]["score"]) and (entry["lines"] > ranked[i]["lines"])) {
+                    ranked.insert(i, entry); ins = True; break;
+                }
+                i += 1;
+            }
+            if not ins { ranked.append(entry); }
+        }
+        # Pick batch
+        batch = [];
+        idx = 0;
+        while idx < len(ranked) and idx < batch_size { batch.append(ranked[idx]["path"]); idx += 1; }
+        # Apply
+        for bp in batch { selected[bp] = True; }
+        ordered.append({"index": it, "selected": batch});
+        it += 1;
+    }
+    # Final coverage after loop
+    cov_final = 0.0;
+    try { cov_final = (1.0 * len(selected)) / (1.0 * total); } except Exception as e { cov_final = 0.0; }
+
+    return {
+        "config": {"max_iters": max_iters, "batch_size": batch_size, "coverage_target": coverage_target},
+        "iterations": ordered,
+        "coverage": {"files_total": total, "selected_total": len(selected), "curve": coverage_curve, "achieved": cov_final, "target": coverage_target},
+        "stopped_reason": (reason if reason != "" else ("max_iters" if it >= max_iters else "done")),
+    };
+}
+
 
 #* Build an overview by coordinating RepoMapper/CodeAnalyzer.
 # If depth == "deep", perform real mapping and analysis. Otherwise, return stubbed data.
@@ -371,6 +548,17 @@ def build_overview(
             # Compute stats (fast, no need to cache separately)
             stats = basic_stats(files, top_n);
 
+            # Progress: scheduling next modules
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 60, "stage": "schedule", "message": "Ranking next modules"}, job_id=job_id); } except Exception as e { }
+            }
+
+            # Build iterative scheduler plan
+            sch_max_iters = 5;
+            try { if depth == "shallow" { sch_max_iters = 3; } } except Exception as e { }
+            sch_batch = (top_n if (top_n > 0) else 20);
+            scheduler = _iterative_scheduler(files, entities, plan, sch_max_iters, sch_batch, 0.6);
+
             # Extract README if available
             readme_data = extract_readme(repo_path);
             readme_summary = "";
@@ -389,6 +577,7 @@ def build_overview(
                 "readme": readme_data,
                 "readme_summary": readme_summary,
                 "plan": plan,
+                "scheduler": scheduler,
                 "from_cache": False,
             };
 
@@ -418,7 +607,9 @@ def build_overview(
             # Fall back to stub on error
             files = sample_file_tree();
             stats = basic_stats(files, top_n);
-            return {"file_tree": files, "stats": stats, "repo_url": repo_url, "depth": depth, "error": str(e), "from_cache": False};
+            plan = _prioritize_entry_points(files, top_n);
+            scheduler = _iterative_scheduler(files, {"files": []}, plan, 2, (top_n if (top_n > 0) else 10), 0.5);
+            return {"file_tree": files, "stats": stats, "repo_url": repo_url, "depth": depth, "plan": plan, "scheduler": scheduler, "error": str(e), "from_cache": False};
         }
     }
 
@@ -426,7 +617,8 @@ def build_overview(
     files = sample_file_tree();
     stats = basic_stats(files, top_n);
     plan = _prioritize_entry_points(files, top_n);
-    return {"file_tree": files, "stats": stats, "repo_url": repo_url, "depth": depth, "plan": plan, "from_cache": False};
+    scheduler = _iterative_scheduler(files, {"files": []}, plan, 2, (top_n if (top_n > 0) else 10), 0.5);
+    return {"file_tree": files, "stats": stats, "repo_url": repo_url, "depth": depth, "plan": plan, "scheduler": scheduler, "from_cache": False};
 }
 
 walker Supervisor {
