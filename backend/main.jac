@@ -4,7 +4,7 @@
 import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
-import from graph.builders { build_repo_graph, EdgeBuilder }
+import from graph.builders { build_repo_graph }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
 import from utils.output { save_results_to_disk }
 
@@ -43,6 +43,7 @@ walker generate_docs {
     has repo_url: str = "";
     has depth: str = "standard";
     has use_llm: bool = False;
+    has use_cache: bool = True;
     has include_diagrams: bool = False;
     has diagram_filter_tests: bool = False;
     has diagram_max_edges_call: int = 400;
@@ -51,6 +52,8 @@ walker generate_docs {
     has exclude_dirs: list = [];
     has save_locally: bool = True;
     has outputs_dir: str = "outputs";
+
+    has return_full_data: bool = True;
 
     #* Sensible defaults: filter out binaries/notebooks and focus on code+docs *#
     has exclude_globs: list = [
@@ -76,7 +79,7 @@ walker generate_docs {
 
     can process with `root entry {
         # Build an overview via Supervisor helpers (stub unless depth=="deep")
-        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.include_globs, self.include_paths, self.max_files, self.max_file_size_bytes, self.top_n);
+        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.include_globs, self.include_paths, self.max_files, self.max_file_size_bytes, self.top_n, self.use_cache);
         file_tree = overview["file_tree"];
         stats = overview["stats"];
         entities = {};
@@ -90,10 +93,7 @@ walker generate_docs {
             _repo_node = None;
         }
 
-            # Materialize typed edges via EdgeBuilder walker (non-fatal)
-            if _repo_node != None {
-                try { EdgeBuilder() spawn _repo_node; } except Exception as e { }
-            }
+            # NOTE: EdgeBuilder pass removed; build_repo_graph creates typed edges directly
 
 
         # Extract README summary if available
@@ -223,14 +223,22 @@ walker generate_docs {
             } except Exception as e { saved_paths = {}; }
         }
 
+        # Optionally reduce response payload
+        rtree = file_tree;
+        rentities = entities;
+        if not self.return_full_data {
+            rtree = [];
+            rentities = {"files": []};
+        }
+
         report {
             "status": "success",
             "repo_url": self.repo_url,
             "depth": self.depth,
             "include_diagrams": self.include_diagrams,
-            "file_tree": file_tree,
+            "file_tree": rtree,
             "stats": stats,
-            "entities": entities,
+            "entities": rentities,
             "ccg": ccg,
             "documentation": doc,
             "diagrams": diagrams,

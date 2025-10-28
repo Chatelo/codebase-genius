@@ -1,6 +1,9 @@
 import re
 from pathlib import Path
 from typing import Dict, List, Any
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
+import os
 
 # Optional tree-sitter support via tree_sitter_languages (if installed)
 try:
@@ -164,21 +167,97 @@ def _naive_extract(path: Path, language: str) -> Dict[str, Any]:
     return _naive_extract_generic(path, language)
 
 
-def extract_entities(repo_root: str, file_tree: List[Dict]) -> Dict:
+def _process_single_file(args: tuple) -> Dict[str, Any]:
+    """
+    Process a single file for entity extraction.
+    This function is designed to be called in parallel.
+
+    Args:
+        args: Tuple of (repo_root, item_dict)
+
+    Returns:
+        Extracted entities for the file
+    """
+    repo_root, item = args
     root = Path(repo_root).resolve()
-    results: List[Dict[str, Any]] = []
-    for item in file_tree:
-        if item.get("type") != "CodeFile":
-            continue
-        language = item.get("language", "")
-        rel_path = item.get("path")
-        file_path = (root / rel_path).resolve()
-        if not file_path.exists():
-            continue
+
+    if item.get("type") != "CodeFile":
+        return None
+
+    language = item.get("language", "")
+    rel_path = item.get("path")
+    file_path = (root / rel_path).resolve()
+
+    if not file_path.exists():
+        return None
+
+    try:
         data = _ts_extract(file_path, language) if get_parser is not None else _naive_extract(file_path, language)
         # Attach derived module name and file
         data["file"] = str(file_path)
         data["module"] = _module_name_for(Path(rel_path), language)
         data["language"] = language
-        results.append(data)
+        return data
+    except Exception:
+        # Skip files that fail to parse
+        return None
+
+
+def extract_entities(repo_root: str, file_tree: List[Dict], parallel: bool = True, max_workers: int = None) -> Dict:
+    """
+    Extract entities from all code files in the file tree.
+
+    Args:
+        repo_root: Root directory of the repository
+        file_tree: List of file metadata dictionaries
+        parallel: Whether to use parallel processing (default: True)
+        max_workers: Maximum number of worker processes (default: CPU count)
+
+    Returns:
+        Dictionary with "files" key containing list of extracted entities
+    """
+    # Filter to only code files
+    code_files = [item for item in file_tree if item.get("type") == "CodeFile"]
+
+    if not code_files:
+        return {"files": []}
+
+    # Determine if we should use parallel processing
+    # Only use parallel for larger file sets (overhead not worth it for small sets)
+    use_parallel = parallel and len(code_files) > 10
+
+    if not use_parallel:
+        # Sequential processing for small file sets
+        results: List[Dict[str, Any]] = []
+        for item in code_files:
+            data = _process_single_file((repo_root, item))
+            if data is not None:
+                results.append(data)
+        return {"files": results}
+
+    # Parallel processing for larger file sets
+    if max_workers is None:
+        # Use CPU count, but cap at 8 to avoid excessive overhead
+        max_workers = min(multiprocessing.cpu_count(), 8)
+
+    results: List[Dict[str, Any]] = []
+
+    # Prepare arguments for parallel processing
+    args_list = [(repo_root, item) for item in code_files]
+
+    # Use ProcessPoolExecutor for CPU-bound parsing work
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        futures = {executor.submit(_process_single_file, args): args for args in args_list}
+
+        # Collect results as they complete
+        for future in as_completed(futures):
+            try:
+                data = future.result()
+                if data is not None:
+                    results.append(data)
+            except Exception:
+                # Skip files that fail to parse
+                pass
+
     return {"files": results}

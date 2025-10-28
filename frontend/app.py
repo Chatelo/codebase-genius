@@ -61,7 +61,7 @@ def call_generate_docs(config: Dict[str, Any]) -> Dict[str, Any]:
         response = requests.post(
             f"{BACKEND_URL}/walker/generate_docs",
             json=config,
-            timeout=300  # 5 minute timeout for large repos
+            timeout=600  # 10 minute timeout for large repos
         )
         response.raise_for_status()
         result = response.json()

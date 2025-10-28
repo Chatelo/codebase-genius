@@ -8,12 +8,16 @@ import from utils.repo { clone_or_open_repo }
 import from utils.fs_map { scan_repo_tree }
 import from utils.ts_analyze { extract_entities }
 
-#* Simple function to build a repository graph from file data (with relationships) *#
+#* Build a repository graph from file data with relationships in one pass.
+# This function creates all nodes and typed edges directly, eliminating the need
+# for a separate EdgeBuilder walker pass.
+*#
 def build_repo_graph(
     root_node: any,
     repo_url: str,
     files: list,
-    entities: dict
+    entities: dict,
+    build_typed_edges: bool = True
 ) -> any {
     # Create Repository node
     repo_node = root_node ++> Repository(url=repo_url);
@@ -110,7 +114,10 @@ def build_repo_graph(
         }
     }
 
-    # Create relationship edges (Calls, Inherits, Imports) using default edges for maximum compatibility
+    # Create relationship edges (Calls, Inherits, Imports)
+    # Build typed edges directly if requested, otherwise use default edges
+    edge_stats = {"calls": 0, "inherits": 0, "imports": 0};
+
     if "files" in entities {
         for fe2 in entities["files"] {
             rel = ""; mod_src = None;
@@ -133,10 +140,23 @@ def build_repo_graph(
                         }
                     }
                     if caller != None and callee != None {
-                        # Default edge (typed edge creation may be restricted in this context)
-                        ln = 0; if "line" in c { ln = c["line"]; }
-                        caller ++> callee;
-                        repo_node.ccg_calls.append({"caller": caller, "callee": callee, "line": ln, "type": "direct"});
+                        ln = 0; ctype = "direct";
+                        if "line" in c { ln = c["line"]; }
+
+                        if build_typed_edges {
+                            # Create typed edge directly
+                            try {
+                                caller +>: Calls(line_number=ln, call_type=ctype) :+> callee;
+                                edge_stats["calls"] += 1;
+                            } except Exception as e {
+                                # Fallback to default edge if typed edge fails
+                                caller ++> callee;
+                            }
+                        } else {
+                            # Use default edge and cache for later
+                            caller ++> callee;
+                            repo_node.ccg_calls.append({"caller": caller, "callee": callee, "line": ln, "type": ctype});
+                        }
                     }
                 }
             }
@@ -149,8 +169,22 @@ def build_repo_graph(
                         if inh["class"] in cls_global { sub = cls_global[inh["class"]]; }
                         if inh["base"] in cls_global { base = cls_global[inh["base"]]; }
                         if sub != None and base != None {
-                            sub ++> base;
-                            repo_node.ccg_inherits.append({"sub": sub, "base": base, "type": "extends"});
+                            itype = "extends";
+
+                            if build_typed_edges {
+                                # Create typed edge directly
+                                try {
+                                    sub +>: Inherits(inheritance_type=itype) :+> base;
+                                    edge_stats["inherits"] += 1;
+                                } except Exception as e {
+                                    # Fallback to default edge if typed edge fails
+                                    sub ++> base;
+                                }
+                            } else {
+                                # Use default edge and cache for later
+                                sub ++> base;
+                                repo_node.ccg_inherits.append({"sub": sub, "base": base, "type": itype});
+                            }
                         }
                     }
                 }
@@ -168,15 +202,33 @@ def build_repo_graph(
                         repo_node ++> tgt;
                         mod_global[tgt_name] = tgt;
                     }
-                    # Connect modules with default edge and cache for typed edge materialization
+
                     al = ""; itype = "import";
                     if "alias" in imp { al = imp["alias"]; }
                     if "import_type" in imp { itype = imp["import_type"]; }
-                    mod_src ++> tgt;
-                    repo_node.ccg_imports.append({"src": mod_src, "dst": tgt, "alias": al, "import_type": itype});
+
+                    if build_typed_edges {
+                        # Create typed edge directly
+                        try {
+                            mod_src +>: Imports(import_type=itype, alias=al) :+> tgt;
+                            edge_stats["imports"] += 1;
+                        } except Exception as e {
+                            # Fallback to default edge if typed edge fails
+                            mod_src ++> tgt;
+                        }
+                    } else {
+                        # Use default edge and cache for later
+                        mod_src ++> tgt;
+                        repo_node.ccg_imports.append({"src": mod_src, "dst": tgt, "alias": al, "import_type": itype});
+                    }
                 }
             }
         }
+    }
+
+    # Store edge statistics on the repository node
+    if build_typed_edges {
+        repo_node.ccg_stats = edge_stats;
     }
 
     return repo_node;
