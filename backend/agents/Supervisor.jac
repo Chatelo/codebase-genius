@@ -1,11 +1,9 @@
 # Orchestrator walker (minimal -> real-ready)
 
-import from agents.RepoMapper { sample_file_tree }
-import from agents.CodeAnalyzer { basic_stats }
+import from agents.RepoMapper { sample_file_tree, map_scan, get_readme_info, ensure_repo }
+import from agents.CodeAnalyzer { basic_stats, analyze_files }
 
-import from utils.repo { clone_or_open_repo, is_repo_cached }
-import from utils.fs_map { scan_repo_tree, extract_readme, summarize_readme_sections }
-import from utils.ts_analyze { extract_entities }
+import from utils.repo { is_repo_cached }
 import from utils.cache { get_cache }
 
 # --- Entry-point prioritization helpers ---
@@ -377,7 +375,7 @@ def build_overview(
                     cache.set("progress", repo_url, {"percent": 5, "stage": "clone", "message": msg0}, job_id=job_id);
                 } except Exception as e { }
             }
-            repo_path = clone_or_open_repo(repo_url);
+            repo_path = ensure_repo(repo_url);
             # Progress: repo ready; indicate cache reuse if applicable
             if job_id != "" {
                 try {
@@ -404,18 +402,18 @@ def build_overview(
             }
 
             if files == None {
-                files = scan_repo_tree(
-                    repo_path,
+                mapping = map_scan(
+                    repo_url,
                     exclude_dirs,
                     exclude_globs,
                     include_exts,
                     include_globs,
                     include_paths,
                     max_files,
-                    max_file_size_bytes,
-                    True,
-                    524288,
+                    max_file_size_bytes
                 );
+                repo_path = mapping.get("repo_path", "");
+                files = mapping.get("file_tree", []);
                 # Cache file_tree
                 if use_cache {
                     cache.set(
@@ -495,19 +493,19 @@ def build_overview(
                 ent_acc_files = [];
                 ent_acc_errors = [];
                 if (len(pri_items) > 0) and (len(rest_items) > 0) {
-                    ent1 = extract_entities(repo_path, pri_items, False);
+                    ent1 = analyze_files(repo_path, pri_items, False);
                     if ("files" in ent1) { for a in ent1["files"] { ent_acc_files.append(a); } }
                     if ("errors" in ent1) { for e1 in ent1["errors"] { ent_acc_errors.append(e1); } }
                     if job_id != "" {
                         try { cache.set("progress", repo_url, {"percent": 45, "stage": "parse", "message": f"Entry points analyzed ({len(pri_items)})"}, job_id=job_id); } except Exception as e { }
                     }
-                    ent2 = extract_entities(repo_path, rest_items);
+                    ent2 = analyze_files(repo_path, rest_items);
                     if ("files" in ent2) { for b in ent2["files"] { ent_acc_files.append(b); } }
                     if ("errors" in ent2) { for e2 in ent2["errors"] { ent_acc_errors.append(e2); } }
                     entities = {"files": ent_acc_files, "errors": ent_acc_errors};
                 } else {
                     # Single-pass extraction
-                    entities = extract_entities(repo_path, files);
+                    entities = analyze_files(repo_path, files);
                 }
 
                 # Cache entities
@@ -555,13 +553,13 @@ def build_overview(
             sch_batch = (top_n if (top_n > 0) else 20);
             scheduler = _iterative_scheduler(files, entities, plan, sch_max_iters, sch_batch, 0.6);
 
-            # Extract README if available
-            readme_data = extract_readme(repo_path);
-            readme_summary = "";
-            if readme_data != None {
-                sections = readme_data.get("sections", []);
-                readme_summary = summarize_readme_sections(sections, 5);
-            }
+            # Extract README if available via RepoMapper
+            readme_data = None; readme_summary = "";
+            try {
+                ri = get_readme_info(repo_path, 5);
+                if "readme" in ri { readme_data = ri["readme"]; }
+                if "readme_summary" in ri { readme_summary = ri["readme_summary"]; }
+            } except Exception as e { readme_data = None; readme_summary = ""; }
 
             result = {
                 "repo_url": repo_url,

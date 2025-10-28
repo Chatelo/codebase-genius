@@ -552,3 +552,148 @@ walker api_get_progress {
         };
     }
 }
+
+
+# CCG query endpoints
+walker api_ccg_callers {
+    has repo_url: str = "";
+    has func_name: str = "";
+    has depth: str = "deep";
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if (self.repo_url == "") or (self.func_name == "") {
+            report {"status": "error", "message": "repo_url and func_name are required", "status_code": 400};
+        }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        res = []; err = gerr;
+        if _repo_node != None {
+            try { res = ccg_get_callers(_repo_node, self.func_name); } except Exception as e { err = str(e); res = []; }
+        }
+        report {"status": "success", "repo_url": self.repo_url, "func_name": self.func_name, "results": res, "error": err};
+    }
+}
+
+walker api_ccg_callees {
+    has repo_url: str = "";
+    has func_name: str = "";
+    has depth: str = "deep";
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if (self.repo_url == "") or (self.func_name == "") {
+            report {"status": "error", "message": "repo_url and func_name are required", "status_code": 400};
+        }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        res = []; err = gerr;
+        if _repo_node != None {
+            try { res = ccg_get_callees(_repo_node, self.func_name); } except Exception as e { err = str(e); res = []; }
+        }
+        report {"status": "success", "repo_url": self.repo_url, "func_name": self.func_name, "results": res, "error": err};
+    }
+}
+
+
+walker api_ccg_subclasses {
+    has repo_url: str = "";
+    has class_name: str = "";
+    has depth: str = "deep";
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if (self.repo_url == "") or (self.class_name == "") {
+            report {"status": "error", "message": "repo_url and class_name are required", "status_code": 400};
+        }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        res = []; err = gerr;
+        if _repo_node != None {
+            try { res = ccg_get_subclasses(_repo_node, self.class_name); } except Exception as e { err = str(e); res = []; }
+        }
+        report {"status": "success", "repo_url": self.repo_url, "class_name": self.class_name, "results": res, "error": err};
+    }
+}
+
+walker api_ccg_dependencies {
+    has repo_url: str = "";
+    has module_name: str = "";
+    has depth: str = "deep";
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if (self.repo_url == "") or (self.module_name == "") {
+            report {"status": "error", "message": "repo_url and module_name are required", "status_code": 400};
+        }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        res = []; err = gerr;
+        if _repo_node != None {
+            try { res = ccg_get_dependencies(_repo_node, self.module_name); } except Exception as e { err = str(e); res = []; }
+        }
+        report {"status": "success", "repo_url": self.repo_url, "module_name": self.module_name, "results": res, "error": err};
+    }
+}
+
+
+# Compact graph traversal: return counts and top-N over relationships
+walker api_ccg_overview {
+    has repo_url: str = "";
+    has depth: str = "deep";
+    has top_n: int = 5;
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        if self.repo_url == "" { report {"status": "error", "message": "repo_url is required", "status_code": 400}; }
+        ov = build_overview(self.repo_url, self.depth);
+        ents = {}; if "entities" in ov { ents = ov["entities"]; }
+        ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
+        _repo_node = None; gerr = "";
+        try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
+        out = {"counts": {"calls": 0, "inherits": 0, "imports": 0}, "top": {"functions": [], "classes": [], "modules": []}, "error": gerr};
+        if _repo_node != None {
+            # counts
+            try {
+                out["counts"]["calls"] = len(_repo_node.ccg_calls);
+                out["counts"]["inherits"] = len(_repo_node.ccg_inherits);
+                out["counts"]["imports"] = len(_repo_node.ccg_imports);
+            } except Exception as e { }
+            # top functions by fan-in
+            fin = {};
+            try { for rel in _repo_node.ccg_calls { if ("callee" in rel) and (rel["callee"] != None) {
+                nm = rel["callee"].name; if nm not in fin { fin[nm] = 0; } fin[nm] += 1; } } } except Exception as e { fin = {}; }
+            funcs = [];
+            for k in fin { entry = {"name": k, "count": fin[k]}; ins = False; i = 0; while i < len(funcs) { if entry["count"] > funcs[i]["count"] { funcs.insert(i, entry); ins=True; break; } i += 1; } if not ins { funcs.append(entry); } }
+            # top classes by subclasses
+            classes_all = []; try { if ("files" in ents) { for f in ents["files"] { if ("classes" in f) { for cn in f["classes"] { dup=False; j=0; while j < len(classes_all) { if classes_all[j]==cn { dup=True; break; } j+=1; } if not dup { classes_all.append(cn); } } } } } } except Exception as e { classes_all = []; }
+            cls_counts = []; for cn in classes_all { subs = []; try { subs = ccg_get_subclasses(_repo_node, cn); } except Exception as e { subs = []; } cnt=0; for s in subs { cnt += 1; } en = {"name": cn, "count": cnt}; ins2=False; y=0; while y < len(cls_counts) { if en["count"] > cls_counts[y]["count"] { cls_counts.insert(y, en); ins2=True; break; } y+=1; } if not ins2 { cls_counts.append(en); } }
+            # top modules by dependencies
+            mods_all = []; try { if ("files" in ents) { for f in ents["files"] { if ("module" in f) { mn=f["module"]; if mn!="" { dupm=False; q=0; while q < len(mods_all) { if mods_all[q]==mn { dupm=True; break; } q+=1; } if not dupm { mods_all.append(mn); } } } } } } except Exception as e { mods_all = []; }
+            mod_counts = []; for mn in mods_all { deps=[]; try { deps = ccg_get_dependencies(_repo_node, mn); } except Exception as e { deps = []; } mc=0; for d in deps { mc+=1; } em = {"name": mn, "count": mc}; ins3=False; r=0; while r < len(mod_counts) { if em["count"] > mod_counts[r]["count"] { mod_counts.insert(r, em); ins3=True; break; } r+=1; } if not ins3 { mod_counts.append(em); } }
+            # trim
+            t = self.top_n; if t < 1 { t = 5; }
+            out["top"]["functions"] = funcs[0:t];
+            out["top"]["classes"] = cls_counts[0:t];
+            out["top"]["modules"] = mod_counts[0:t];
+        }
+        report {"status": "success", "repo_url": self.repo_url, "overview": out};
+    }
+}

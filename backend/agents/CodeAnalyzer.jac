@@ -2,6 +2,9 @@
 
 import from graph.nodes { Repository, Function, Class, Module }
 
+import from utils.ts_analyze { extract_entities }
+
+
 #* CCG Query helpers operating on Repository.ccg_* caches (no traversal required) *#
 def ccg_get_callers(repo: Repository, func_name: str) -> list {
     res = [];
@@ -70,6 +73,12 @@ def ccg_get_dependencies(repo: Repository, module_name: str) -> list {
         }
     }
     return res;
+}
+
+# Wrapper for entity extraction to keep analysis in the CodeAnalyzer agent boundary
+# items: list of file dicts from file_tree; returns {"functions": [...], "classes": [...], ...}
+def analyze_files(repo_path: str, items: list, parallel: bool = True) -> dict {
+    return extract_entities(repo_path, items, parallel);
 }
 
 #* Compute basic stats from a file_tree list.
