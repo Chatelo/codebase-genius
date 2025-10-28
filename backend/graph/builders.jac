@@ -19,10 +19,9 @@ def build_repo_graph(
     entities: dict,
     build_typed_edges: bool = True
 ) -> any {
-    # Create Repository node (robust: attach to root if possible, else standalone)
-    repo_node = None;
-    try { repo_node = root_node ++> Repository(url=repo_url); }
-    except Exception as e { repo_node = Repository(url=repo_url); }
+    # Create Repository node (instantiate first; then attach to root if possible)
+    repo_node = Repository(url=repo_url);
+    try { root_node ++> repo_node; } except Exception as e { }
 
     # Repo name from URL
     url_parts = repo_url.rstrip('/').split('/');

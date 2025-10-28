@@ -111,7 +111,7 @@ walker generate_docs {
         # Fatal: repo clone/access errors  stop early with clear message
         if ("error" in overview) {
             err_msg = overview["error"];
-            if ("Failed to clone repository" in err_msg) or ("GitPython is not available" in err_msg) {
+            if ("Failed to clone repository" in err_msg) or ("GitPython is not available" in err_msg) or ("Invalid GitHub URL" in err_msg) or ("Repository not found at" in err_msg) {
                 if self.job_id != "" {
                     try { cache.set("progress", self.repo_url, {"percent": 15, "stage": "clone", "message": err_msg}, job_id=self.job_id); } except Exception as e { }
                 }

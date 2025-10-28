@@ -33,6 +33,16 @@ def clone_or_open_repo(repo_url: str) -> str:
     if p.exists() and p.is_dir():
         return str(p.resolve())
 
+    # Validate common remote URL mistakes (GitHub org URL without repo)
+    url = repo_url.strip()
+    if url.startswith("http://") or url.startswith("https://"):
+        gh_org_only = re.match(r"^https?://github\.com/[^/]+/?$", url.rstrip('/'))
+        if gh_org_only:
+            raise RuntimeError(
+                "Invalid GitHub URL: points to a user/org, not a repository. "
+                "Use https://github.com/<owner>/<repo>"
+            )
+
     # Remote URL path
     slug = _slugify(repo_url)
     hashed = hashlib.sha1(repo_url.encode()).hexdigest()[:10]
@@ -51,6 +61,11 @@ def clone_or_open_repo(repo_url: str) -> str:
     try:
         Repo.clone_from(repo_url, str(target))
     except Exception as e:
-        raise RuntimeError(f"Failed to clone repository: {repo_url}. {str(e)}")
+        msg = str(e)
+        if ("Not Found" in msg) or ("repository not found" in msg.lower()):
+            raise RuntimeError(
+                f"Repository not found at {repo_url}. Ensure the URL includes both owner and repo (e.g., https://github.com/owner/repo) and is public or accessible."
+            )
+        raise RuntimeError(f"Failed to clone repository: {repo_url}. {msg}")
     return str(target.resolve())
 
