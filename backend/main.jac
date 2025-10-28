@@ -356,12 +356,24 @@ walker generate_docs {
                     k3 += 1;
                 }
 
-                # Combine
-                ccg_parts = [];
-                if funcs_summary != "" { ccg_parts.append(f"Funcs: {funcs_summary}"); }
-                if classes_summary != "" { ccg_parts.append(f"Classes: {classes_summary}"); }
-                if mods_summary != "" { ccg_parts.append(f"Modules: {mods_summary}"); }
-                if len(ccg_parts) > 0 { ccg_context = " ".join(ccg_parts); }
+                # Combine (formatted markdown bullets)
+                ccg_context = "";
+                if funcs_summary != "" {
+                    ccg_context += "- Functions:\n";
+                    # split on " | " to sub-bullets
+                    try { parts = funcs_summary.split(" | "); } except Exception as e { parts = [funcs_summary]; }
+                    for pr in parts { if pr != "" { ccg_context += f"  - {pr}\n"; } }
+                }
+                if classes_summary != "" {
+                    ccg_context += "- Classes:\n";
+                    try { parts2 = classes_summary.split(" | "); } except Exception as e { parts2 = [classes_summary]; }
+                    for pr2 in parts2 { if pr2 != "" { ccg_context += f"  - {pr2}\n"; } }
+                }
+                if mods_summary != "" {
+                    ccg_context += "- Modules:\n";
+                    try { parts3 = mods_summary.split(" | "); } except Exception as e { parts3 = [mods_summary]; }
+                    for pr3 in parts3 { if pr3 != "" { ccg_context += f"  - {pr3}\n"; } }
+                }
             }
         } except Exception as e { ccg_context = ""; ccg_mermaid = ""; }
 
@@ -369,8 +381,8 @@ walker generate_docs {
         if ccg_mermaid != "" { extra_context += f" CCGDiagram={ccg_mermaid}"; }
 
 
-        # Build Top Files (by lines) summary
-        top_files_str = "";
+        # Build Top Files (by lines) summary (string + markdown list)
+        top_files_str = ""; top_files_md = "";
         if "top_files_by_lines" in stats {
             i = 0;
             for entry in stats["top_files_by_lines"] {
@@ -380,12 +392,13 @@ walker generate_docs {
                 if "lines" in entry { ln = entry["lines"]; }
                 if top_files_str != "" { top_files_str += ", "; }
                 top_files_str += f"{pth} ({ln} loc)";
+                top_files_md += f"  - {pth} — {ln} LOC\n";
                 i += 1;
             }
         }
 
-        # Build API surface summary (classes + total functions)
-        api_surface = "";
+        # Build API surface summary (classes + total functions) and markdown list
+        api_surface = ""; api_classes_md = ""; funcs_total_num = 0;
         if ("files" in entities) {
             classes = [];
             funcs_total = 0;
@@ -411,8 +424,10 @@ walker generate_docs {
                 if j >= self.top_n { break; }
                 if cls_str != "" { cls_str += ", "; }
                 cls_str += cname;
+                api_classes_md += f"  - {cname}\n";
                 j += 1;
             }
+            funcs_total_num = funcs_total;
             api_surface = f"Classes: [{cls_str}]; Total functions: {funcs_total}";
         }
 
@@ -504,11 +519,21 @@ walker generate_docs {
         inst_md = "## Installation\n\n" + (inst_txt if (inst_txt != "") else "Refer to the repository README for installation instructions.") + "\n\n";
         use_md = "## Usage\n\n" + (use_txt if (use_txt != "") else "Refer to the repository README for usage examples.") + "\n\n";
 
-        # API Reference summary (from earlier surface + counts)
+        # API Reference summary (formatted)
         api_md = "## API Reference (summary)\n\n";
-        if api_surface != "" { api_md += api_surface + "\n"; }
-        try { api_md += f"CCG counts — calls: {ccg['calls']}, inherits: {ccg['inherits']}, imports: {ccg['imports']}\n"; } except Exception as e { }
-        if top_files_str != "" { api_md += f"Top files by lines: {top_files_str}\n"; }
+        # Classes
+        if api_classes_md != "" { api_md += "- Classes (top selection):\n" + api_classes_md; }
+        # Totals
+        if funcs_total_num != 0 { api_md += f"- Total functions: {funcs_total_num}\n"; }
+        # CCG counts
+        try {
+            api_md += "- CCG counts:\n";
+            api_md += f"  - calls: {ccg['calls']}\n";
+            api_md += f"  - inherits: {ccg['inherits']}\n";
+            api_md += f"  - imports: {ccg['imports']}\n";
+        } except Exception as e { }
+        # Top files by lines
+        if top_files_md != "" { api_md += "- Top files by lines:\n" + top_files_md; }
         api_md += "\n";
 
         # Diagrams (embed Mermaid when available)

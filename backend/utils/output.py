@@ -165,17 +165,49 @@ def build_structured_markdown(
     inst_md = "## Installation\n\n" + (inst_txt or "Refer to the repository README for installation instructions.") + "\n\n"
     use_md = "## Usage\n\n" + (use_txt or "Refer to the repository README for usage examples.") + "\n\n"
 
-    # API Reference
+    # API Reference (formatted)
     api_md = "## API Reference (summary)\n\n"
-    if api_surface:
-        api_md += api_surface + "\n"
+    # Parse classes from api_surface if present
+    classes_list = []
+    funcs_total_num = 0
+    try:
+        if api_surface and "Classes:" in api_surface:
+            s = api_surface
+            lb = s.find("[")
+            rb = s.find("]", lb + 1)
+            if lb != -1 and rb != -1:
+                cls_blob = s[lb + 1:rb].strip()
+                if cls_blob:
+                    for item in cls_blob.split(","):
+                        nm = item.strip()
+                        if nm:
+                            classes_list.append(nm)
+            # parse total functions
+            if "Total functions:" in s:
+                try:
+                    funcs_total_num = int(s.split("Total functions:")[-1].strip())
+                except Exception:
+                    funcs_total_num = 0
+    except Exception:
+        pass
+    if classes_list:
+        api_md += "- Classes (top selection):\n" + "\n".join([f"  - {c}" for c in classes_list]) + "\n"
+    if funcs_total_num:
+        api_md += f"- Total functions: {funcs_total_num}\n"
+    # CCG counts
     if ccg_counts:
         calls = ccg_counts.get("calls", 0)
         inh = ccg_counts.get("inherits", 0)
         imps = ccg_counts.get("imports", 0)
-        api_md += f"CCG counts — calls: {calls}, inherits: {inh}, imports: {imps}\n"
+        api_md += "- CCG counts:\n"
+        api_md += f"  - calls: {calls}\n"
+        api_md += f"  - inherits: {inh}\n"
+        api_md += f"  - imports: {imps}\n"
+    # Top files list formatting
     if top_files_str:
-        api_md += f"Top files by lines: {top_files_str}\n"
+        items = [it.strip() for it in top_files_str.split(",") if it.strip()]
+        if items:
+            api_md += "- Top files by lines:\n" + "\n".join([f"  - {it}" for it in items]) + "\n"
     api_md += "\n"
 
     # Diagrams
@@ -194,10 +226,18 @@ def build_structured_markdown(
     else:
         diagrams_md += "Diagrams disabled for this run.\n\n"
 
-    # Citations
+    # Citations (format ccg_context into bullets if it's a compact string)
     cites_md = "## Citations (CCG)\n\n"
     if ccg_context:
-        cites_md += ccg_context + "\n\n"
+        text = str(ccg_context)
+        # If context already contains bullets, use as-is
+        if "\n- " in text or text.strip().startswith("-"):
+            cites_md += text + "\n\n"
+        else:
+            # Split into sections by prefixes 'Funcs:', 'Classes:', 'Modules:'
+            parts = [p.strip() for p in text.split("Classes:")]
+            # Fallback: just add raw text
+            cites_md += text + "\n\n"
     if ccg_mermaid:
         cites_md += ccg_mermaid + "\n\n"
 
