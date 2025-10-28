@@ -418,14 +418,16 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
     files = [];
     try { if "file_tree" in repo { files = repo.file_tree; } } except Exception as e { files = []; }
 
-    # Top files by lines, include optional metadata (size, language) when available
+    # Top files by lines and size, include optional metadata (size, language) when available
     top_lines = [];
+    top_size = [];
     for item in files {
         if ("type" in item) and item["type"] == "CodeFile" {
-            p = item.get("path", ""); ln = item.get("lines", 0);
+            p = item.get("path", ""); ln = item.get("lines", 0); sz = item.get("size", 0);
             entry = {"path": p, "lines": ln};
             try { if ("size" in item) { entry["size"] = item["size"]; } } except Exception as e { }
             try { if ("language" in item) { entry["language"] = item["language"]; } } except Exception as e { }
+            # Insert by lines
             inserted = False; i = 0;
             while i < len(top_lines) {
                 if ln > top_lines[i]["lines"] { top_lines.insert(i, entry); inserted = True; break; }
@@ -433,6 +435,15 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
             }
             if not inserted { top_lines.append(entry); }
             if len(top_lines) > top_n { top_lines.pop(); }
+            # Insert by size
+            inserted2 = False; j = 0;
+            while j < len(top_size) {
+                cur = 0; try { if ("size" in top_size[j]) { cur = top_size[j]["size"]; } } except Exception as e { cur = 0; }
+                if sz > cur { top_size.insert(j, entry); inserted2 = True; break; }
+                j += 1;
+            }
+            if not inserted2 { top_size.append(entry); }
+            if len(top_size) > top_n { top_size.pop(); }
         }
     }
 
@@ -452,7 +463,7 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
         }
     } except Exception as e { api_classes = api_classes; total_functions = total_functions; }
 
-    return {"top_files": top_lines, "api_classes": api_classes[0:top_n], "total_functions": total_functions};
+    return {"top_files": top_lines, "top_files_by_size": top_size, "api_classes": api_classes[0:top_n], "total_functions": total_functions};
 }
 
 
@@ -473,6 +484,7 @@ walker StatsCollector {
 walker DocCollector {
     has top_n: int = 10;
     has top_files: list = [];
+    has top_files_by_size: list = [];
     has api_classes: list = [];
     has total_functions: int = 0;
 
@@ -487,10 +499,11 @@ walker DocCollector {
         res = doc_collect(here, ents, visitor.top_n);
         try {
             if ("top_files" in res) { visitor.top_files = res["top_files"]; }
+            if ("top_files_by_size" in res) { visitor.top_files_by_size = res["top_files_by_size"]; }
             if ("api_classes" in res) { visitor.api_classes = res["api_classes"]; }
             if ("total_functions" in res) { visitor.total_functions = res["total_functions"]; }
         } except Exception as e { }
-        report {"top_files": visitor.top_files, "api_classes": visitor.api_classes, "total_functions": visitor.total_functions};
+        report {"top_files": visitor.top_files, "top_files_by_size": visitor.top_files_by_size, "api_classes": visitor.api_classes, "total_functions": visitor.total_functions};
     }
 }
 

@@ -314,6 +314,7 @@ Success response (shape)
   "repo_url": "...",
   "docs": {
     "top_files": [{ "path": "src/a.py", "lines": 420 }],
+    "top_files_by_size": [{ "path": "src/a.py", "size": 12345 }],
     "api_classes": ["pkg.mod.Base", "pkg.mod.Service"],
     "total_functions": 123
   },
@@ -505,12 +506,14 @@ backgroundColor = "#ffffff"
 
 See real examples of Codebase Genius in action:
 
-- **[outputs/micrograd/](outputs/micrograd/)** - Analysis of [karpathy/micrograd](https://github.com/karpathy/micrograd)
-  - `documentation.md` - AI-generated comprehensive documentation
-  - `diagrams/` - Mermaid diagrams (call graph, class hierarchy, module dependencies)
-  - `statistics.json` - Repository metrics and analytics
+- **[outputs/codebase-genius/](outputs/codebase-genius/)** — Analysis of this project (Codebase Genius)
+  - `codebase-genius_documentation.md` — AI-generated comprehensive documentation
+  - `diagrams/` — Mermaid diagrams (call graph, class hierarchy, module dependencies)
+  - `statistics.json` — Repository metrics and analytics
 
-See **[outputs/README.md](outputs/README.md)** for details on interpreting sample outputs.
+- **[outputs/micrograd/](outputs/micrograd/)** — Analysis of [karpathy/micrograd](https://github.com/karpathy/micrograd)
+  - `micrograd_documentation.md` — AI-generated documentation
+  - `statistics.json` — Repository metrics
 
 
 ## 📄 License

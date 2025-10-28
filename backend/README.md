@@ -124,5 +124,5 @@ Graph Docs request
 ```
 Graph Docs success response (shape)
 ```json
-{ "status":"success", "repo_url":"...", "docs": { "top_files":[{"path":"src/a.py","lines":420}], "api_classes":["pkg.mod.Base"], "total_functions": 123 }, "error":"" }
+{ "status":"success", "repo_url":"...", "docs": { "top_files":[{"path":"src/a.py","lines":420}], "top_files_by_size":[{"path":"src/a.py","size":12345}], "api_classes":["pkg.mod.Base"], "total_functions": 123 }, "error":"" }
 ```

@@ -484,6 +484,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TopFileLines'
+        top_files_by_size:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopFileSize'
         api_classes:
           type: array
           items:

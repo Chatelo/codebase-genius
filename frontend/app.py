@@ -919,9 +919,15 @@ def main():
                                 st.metric("Total Functions", doc_payload.get("total_functions", 0))
                             with c2:
                                 st.metric("API Classes", len(doc_payload.get("api_classes", [])))
-                            # Top files table with optional extra fields + sorting
-                            top_files_all = list(doc_payload.get("top_files", []))
-                            if top_files_all:
+                            # Top files table with server ranking toggle + extra fields + sorting
+                            server_lines = list(doc_payload.get("top_files", []))
+                            server_size = list(doc_payload.get("top_files_by_size", []))
+                            any_rows = server_lines or server_size
+                            if any_rows:
+                                rank_choice = st.radio("Rank by", options=["Lines", "Size"], index=0, horizontal=True, key="gdocs_rank_by")
+                                use_size = (rank_choice == "Size") and len(server_size) > 0
+                                top_files_all = server_size if use_size else server_lines
+
                                 # Determine available sort keys; prefer numeric (lines/size) then path
                                 possible = []
                                 for k in ["lines", "size", "path"]:
@@ -933,7 +939,8 @@ def main():
 
                                 csort1, csort2 = st.columns([3, 1])
                                 with csort1:
-                                    default_idx = possible.index("lines") if "lines" in possible else 0
+                                    default_key = "size" if use_size and ("size" in possible) else ("lines" if "lines" in possible else possible[0])
+                                    default_idx = possible.index(default_key)
                                     sort_by = st.selectbox("Sort by", options=possible, index=default_idx, key="gdocs_sort_key")
                                 with csort2:
                                     asc = st.checkbox("Ascending", value=False, key="gdocs_sort_asc")
@@ -958,7 +965,8 @@ def main():
                                     return 0 if k in ["lines", "size"] else ""
 
                                 sorted_tf = sorted(top_files_all, key=lambda d: _sv(d, sort_by), reverse=not asc)[:tn]
-                                st.caption(f"Top Files (from walker) — sorted by {sort_by}{' ↑' if asc else ' ↓'}")
+                                cap_rank = "size" if use_size else "lines"
+                                st.caption(f"Top Files (from walker) — ranked by {cap_rank} • sorted by {sort_by}{' ↑' if asc else ' ↓'}")
                                 # Filter to selected columns and preserve order
                                 filtered = [ {k: row.get(k) for k in selected_cols} for row in sorted_tf ]
                                 st.table(filtered)

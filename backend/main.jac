@@ -417,16 +417,16 @@ walker generate_docs {
         }
 
 
-        # Generate documentation (stub or LLM)
-        doc = "";
+        # Generate documentation overview (stub or LLM)
+        doc_overview = "";
         if self.use_llm {
             prompt = f"Generate high-level documentation for repo: {self.repo_url}. Depth: {self.depth}. " + extra_context + f" TopFilesByLines: [{top_files_str}]. API: {api_surface}.";
-            doc = docgen_summarize(self.repo_url, self.depth, prompt);
+            doc_overview = docgen_summarize(self.repo_url, self.depth, prompt);
         } else {
-            doc = f"[Stub] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
+            doc_overview = f"[Overview] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
         }
         if self.job_id != "" {
-            try { cache.set("progress", self.repo_url, {"percent": 85, "stage": "docs", "message": "Documentation generated", "step_index": 5, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+            try { cache.set("progress", self.repo_url, {"percent": 85, "stage": "docs", "message": "Documentation overview generated", "step_index": 5, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
         }
 
 
@@ -479,6 +479,57 @@ walker generate_docs {
             }
 
         }
+
+        # Compose structured Markdown documentation with required sections
+        title_md = f"# Documentation for {self.repo_url}\n\n";
+        overview_md = "## Project Overview\n\n";
+        ov_text = doc_overview;
+        if ov_text == "" { ov_text = "No overview generated."; }
+        overview_md += ov_text + "\n\n";
+
+        # Installation and Usage from README (best-effort)
+        inst_txt = ""; use_txt = "";
+        try {
+            if ("readme" in overview) {
+                rd = overview["readme"];
+                if ("sections" in rd) {
+                    for sec in rd["sections"] {
+                        t = ""; try { t = sec["title"].lower(); } except Exception as e { t = ""; }
+                        if (inst_txt == "") and ("install" in t) { try { inst_txt = sec["content"]; } except Exception as e { inst_txt = ""; } }
+                        if (use_txt == "") and (("usage" in t) or ("use" in t) or ("run" in t) or ("quick start" in t)) { try { use_txt = sec["content"]; } except Exception as e { use_txt = ""; } }
+                    }
+                }
+            }
+        } except Exception as e { inst_txt = inst_txt; use_txt = use_txt; }
+        inst_md = "## Installation\n\n" + (inst_txt if (inst_txt != "") else "Refer to the repository README for installation instructions.") + "\n\n";
+        use_md = "## Usage\n\n" + (use_txt if (use_txt != "") else "Refer to the repository README for usage examples.") + "\n\n";
+
+        # API Reference summary (from earlier surface + counts)
+        api_md = "## API Reference (summary)\n\n";
+        if api_surface != "" { api_md += api_surface + "\n"; }
+        try { api_md += f"CCG counts — calls: {ccg['calls']}, inherits: {ccg['inherits']}, imports: {ccg['imports']}\n"; } except Exception as e { }
+        if top_files_str != "" { api_md += f"Top files by lines: {top_files_str}\n"; }
+        api_md += "\n";
+
+        # Diagrams (embed Mermaid when available)
+        diagrams_md = "## Diagrams\n\n";
+        if self.include_diagrams {
+            try {
+                if ("call_graph" in diagrams) { diagrams_md += f"```mermaid\n{diagrams['call_graph']}\n```\n\n"; }
+                if ("class_hierarchy" in diagrams) { diagrams_md += f"```mermaid\n{diagrams['class_hierarchy']}\n```\n\n"; }
+                if ("module_graph" in diagrams) { diagrams_md += f"```mermaid\n{diagrams['module_graph']}\n```\n\n"; }
+            } except Exception as e { diagrams_md += "Diagrams not available.\n\n"; }
+        } else {
+            diagrams_md += "Diagrams disabled for this run.\n\n";
+        }
+
+        # Citations from CCG summaries
+        cites_md = "## Citations (CCG)\n\n";
+        if ccg_context != "" { cites_md += ccg_context + "\n\n"; }
+        if ccg_mermaid != "" { cites_md += ccg_mermaid + "\n\n"; }
+
+        # Final document
+        doc = title_md + overview_md + inst_md + use_md + api_md + diagrams_md + cites_md;
 
         # Save to disk if enabled
         saved_paths = {};
@@ -735,9 +786,9 @@ walker api_graph_docs {
         ft = []; if "file_tree" in ov { ft = ov["file_tree"]; }
         _repo_node = None; gerr = "";
         try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
-        docd = {"top_files": [], "api_classes": [], "total_functions": 0}; err = gerr;
+        docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; err = gerr;
         if _repo_node != None {
-            try { docd = doc_collect(_repo_node, ents, self.top_n); } catch Exception as e { err = str(e); docd = {"top_files": [], "api_classes": [], "total_functions": 0}; }
+            try { docd = doc_collect(_repo_node, ents, self.top_n); } catch Exception as e { err = str(e); docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; }
         }
         report {"status": "success", "repo_url": self.repo_url, "docs": docd, "error": err};
     }
