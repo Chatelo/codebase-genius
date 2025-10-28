@@ -183,39 +183,97 @@ def render_stats(stats: Dict[str, Any]):
             st.text(f"{idx}. {path} ({lines:,} lines)")
 
 def render_file_tree(file_tree: List[Dict[str, Any]]):
-    """Render file tree in an expandable format."""
+    """Render file tree similar to the `tree` command, with connectors and colors."""
     st.subheader("🌲 File Tree")
 
     if not file_tree:
         st.info("No files found.")
         return
 
-    # Group files by directory
-    dirs = {}
-    for file_info in file_tree:
-        path = file_info.get("path", "")
-        parts = path.split("/")
-        if len(parts) > 1:
-            dir_name = "/".join(parts[:-1])
-            if dir_name not in dirs:
-                dirs[dir_name] = []
-            dirs[dir_name].append(file_info)
-        else:
-            if "." not in dirs:
-                dirs["."] = []
-            dirs["."].append(file_info)
+    # Build a nested tree structure
+    root: Dict[str, Any] = {"dirs": {}, "files": []}
+    for f in file_tree:
+        path = f.get("path", "")
+        parts = [p for p in path.split("/") if p]
+        if not parts:
+            continue
+        node = root
+        for d in parts[:-1]:
+            node = node["dirs"].setdefault(d, {"dirs": {}, "files": []})
+        node["files"].append(parts[-1])
 
-    # Display grouped files
-    for dir_name in sorted(dirs.keys()):
-        with st.expander(f"📂 {dir_name} ({len(dirs[dir_name])} files)"):
-            for file_info in sorted(dirs[dir_name], key=lambda x: x.get("path", "")):
-                path = file_info.get("path", "unknown")
-                lang = file_info.get("language", "unknown")
-                size = file_info.get("size", 0)
-                lines = file_info.get("lines", 0)
+    # Icon/kind by extension
+    def file_kind(name: str) -> str:
+        lower = name.lower()
+        if lower.endswith(".py"): return "py"
+        if lower.endswith((".js", ".jsx", ".ts", ".tsx")): return "js"
+        if lower.endswith((".md", ".rst")): return "md"
+        if lower.endswith((".json", ".yml", ".yaml", ".toml")): return "conf"
+        if lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg")): return "img"
+        return "other"
 
-                file_name = path.split("/")[-1]
-                st.text(f"📄 {file_name} | {lang} | {format_file_size(size)} | {lines:,} lines")
+    def file_icon(name: str) -> str:
+        k = file_kind(name)
+        return {"py": "🐍", "js": "🧩", "md": "📘", "conf": "🧾", "img": "🖼️"}.get(k, "📄")
+
+    # Produce ASCII tree lines with connectors and depth limit
+    def build_lines(node: Dict[str, Any], prefix: str = "", depth: int = 0, max_depth: int = 3) -> List[str]:
+        lines: List[str] = []
+        dirs = sorted(node["dirs"].items(), key=lambda x: x[0])
+        files = sorted(node["files"])  # type: ignore
+        total = len(dirs) + len(files)
+
+        # Directories
+        for idx, (dname, dnode) in enumerate(dirs):
+            last = (idx == total - 1) and (len(files) == 0)
+            branch = "└──" if last else "├──"
+            lines.append(f"{prefix}{branch} <span class=\"dir\"><span class=\"ico\">📁</span> {dname}/</span>")
+            next_prefix = prefix + ("    " if last else "│   ")
+            if depth + 1 < max_depth:
+                lines.extend(build_lines(dnode, next_prefix, depth + 1, max_depth))
+
+        # Files
+        for j, fname in enumerate(files):
+            last = (j + len(dirs) == total - 1)
+            branch = "└──" if last else "├──"
+            kind = file_kind(fname)
+            icon = file_icon(fname)
+            lines.append(f"{prefix}{branch} <span class=\"file lang-{kind}\"><span class=\"ico\">{icon}</span> {fname}</span>")
+        return lines
+
+    # Root header line + content
+    lines = ["<span class=\"dir\"><span class=\"ico\">📁</span> Repository Root/</span>"]
+    lines.extend(build_lines(root, "", 0, 3))
+
+    # Render inside a small iframe to avoid showing raw HTML in Streamlit
+    html_doc = f"""
+    <html>
+      <head>
+        <meta charset='utf-8'/>
+        <style>
+          body {{ margin: 0; }}
+          .tree-pre {{
+            background:#fafafa; border:1px solid #eee; border-radius:8px;
+            padding:12px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco,
+            Consolas, 'Liberation Mono', monospace; font-size: 13px; line-height: 1.5;
+            white-space: pre; overflow: auto;
+          }}
+          .tree-pre .ico {{ display:inline-block; width: 1.2rem; text-align:center; }}
+          .tree-pre .dir {{ color:#2563eb; font-weight:600; }}
+          .tree-pre .file.lang-py  {{ color:#fbbf24; }}
+          .tree-pre .file.lang-js  {{ color:#f59e0b; }}
+          .tree-pre .file.lang-md  {{ color:#3b82f6; }}
+          .tree-pre .file.lang-conf{{ color:#6b7280; }}
+          .tree-pre .file.lang-img {{ color:#8b5cf6; }}
+        </style>
+      </head>
+      <body>
+        <pre class='tree-pre'>{'\n'.join(lines)}</pre>
+      </body>
+    </html>
+    """
+    height = min(700, 28 * (len(lines) + 2))
+    components.html(html_doc, height=height, scrolling=True)
 
 # Mermaid rendering helper (no extra package; embeds mermaid.js)
 def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
@@ -278,14 +336,15 @@ def main():
     st.markdown('<h1 class="main-header">🧠 Codebase Genius</h1>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">AI-Powered Repository Documentation Generator</p>', unsafe_allow_html=True)
 
-    # Main input section: move URL input and Generate button to main body
-    repo_url = st.text_input(
-        "Repository URL",
-        placeholder="https://github.com/username/repo",
-        help="Enter a GitHub repository URL",
-        key="repo_url_main",
-    )
-    generate_button = st.button("🚀 Generate Documentation", type="primary")
+    # Main input section in a form: pressing Enter submits and triggers generation
+    with st.form("generate_form", clear_on_submit=False):
+        repo_url = st.text_input(
+            "Repository URL",
+            placeholder="https://github.com/username/repo",
+            help="Enter a GitHub repository URL",
+            key="repo_url_main",
+        )
+        generate_button = st.form_submit_button("🚀 Generate Documentation", type="primary")
 
 
     # Sidebar configuration
@@ -431,10 +490,9 @@ def main():
                 stage = prog.get("stage", "start")
                 message = prog.get("message", "Working...")
 
-                # If backend reports completion, finalize once and break to avoid duplicates
+                # If backend reports completion, finalize once and break; final message shown after join
                 if (raw_percent >= 100) or (stage == "done"):
                     progress_bar.progress(100)
-                    status_box.success("✅ 100% • done — Completed")
                     break
 
                 percent = max(min(raw_percent, 99), last_percent)
@@ -457,31 +515,39 @@ def main():
                 last_percent = percent
             time.sleep(1.0)
 
-        # Join thread and fetch final result
-        t.join(timeout=1.0)
-        result = result_container.get("result") or {"status": "error", "message": "Failed to get result"}
+        # Join thread and fetch final result (be patient after 100%/done)
         progress_bar.progress(100)
-        status_box.success("✅ 100% • done — Completed")
-
+        # Wait up to 30s for the background request to deliver the result
+        deadline = time.time() + 30
+        while result_container.get("result") is None and t.is_alive() and time.time() < deadline:
+            status_box.info("⏳ 100% • done — Finalizing results…")
+            t.join(timeout=0.5)
+        # Final attempt to join without blocking
+        t.join(timeout=0)
+        result = result_container.get("result") or {"status": "error", "message": "Failed to get result"}
+        if result.get("status") == "success":
+            consolidated = "✅ 100% • done — Completed · Success! Documentation generated successfully."
+            status_box.success(consolidated)
+        else:
+            # Show error in the status box to avoid contradictory messages
+            status_box.error(f"❌ {result.get('message', 'Failed to generate documentation')}")
 
         # Display results
         if result.get("status") == "error":
             st.markdown(f'<div class="error-box">❌ <strong>Error:</strong> {result.get("message", "Unknown error")}</div>', unsafe_allow_html=True)
         elif result.get("status") == "success":
-            st.markdown('<div class="success-box">✅ <strong>Success!</strong> Documentation generated successfully.</div>', unsafe_allow_html=True)
-            # Saved paths (if backend saved to disk)
+            # Saved paths (concise message)
             saved = result.get("saved", {})
             if isinstance(saved, dict) and saved:
-                st.subheader("💾 Saved to Disk")
-                if saved.get("documentation_path"):
-                    st.text(f"Documentation: {saved['documentation_path']}")
-                diags_saved = saved.get("diagrams_paths") or {}
-                if diags_saved:
-                    st.text("Diagrams:")
-                    for k, v in diags_saved.items():
-                        st.text(f"  - {k}: {v}")
-                if saved.get("statistics_path"):
-                    st.text(f"Statistics: {saved['statistics_path']}")
+                base_dir = saved.get("base_dir")
+                if not base_dir:
+                    # Derive a common directory from one of the file paths
+                    base_candidate = saved.get("documentation_path") or saved.get("statistics_path")
+                    if base_candidate:
+                        import os as _os
+                        base_dir = _os.path.dirname(base_candidate)
+                if base_dir:
+                    st.info(f"Documentations and statistics saved to {base_dir}")
 
             # Create tabs for different views (added 📈 Diagrams and ⚠️ Errors)
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data", "⚠️ Errors"])
