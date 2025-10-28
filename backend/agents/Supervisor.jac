@@ -3,7 +3,7 @@
 import from agents.RepoMapper { RepoMapper, sample_file_tree }
 import from agents.CodeAnalyzer { CodeAnalyzer, basic_stats }
 import from agents.DocGenie { DocGenie }
-import from utils.repo { clone_or_open_repo }
+import from utils.repo { clone_or_open_repo, is_repo_cached }
 import from utils.fs_map { scan_repo_tree, extract_readme, summarize_readme_sections }
 import from utils.ts_analyze { extract_entities }
 import from utils.cache { get_cache }
@@ -43,21 +43,34 @@ def build_overview(
                 top_n=top_n
             );
             if cached_result != None {
-                # Cache hit - return cached data
+                # Cache hit - progress note for clarity in UI (cheap; file write only)
+                if job_id != "" {
+                    try { cache.set("progress", repo_url, {"percent": 10, "stage": "clone", "message": "Re-using cached repo artefacts"}, job_id=job_id); } except Exception as e { }
+                }
                 cached_result["from_cache"] = True;
                 return cached_result;
             }
         }
 
         try {
-            # Progress: cloning start (write before blocking clone)
+            was_cached = False;
+            try { was_cached = is_repo_cached(repo_url); } except Exception as e { was_cached = False; }
+            # Progress: cloning/preparation start (write before blocking clone)
             if job_id != "" {
-                try { cache.set("progress", repo_url, {"percent": 5, "stage": "clone", "message": "Cloning repository (shallow)"}, job_id=job_id); } except Exception as e { }
+                try {
+                    msg0 = "Cloning repository (shallow)";
+                    if was_cached { msg0 = "Preparing repository"; }
+                    cache.set("progress", repo_url, {"percent": 5, "stage": "clone", "message": msg0}, job_id=job_id);
+                } except Exception as e { }
             }
             repo_path = clone_or_open_repo(repo_url);
-            # Progress: repo cloned/opened
+            # Progress: repo ready; indicate cache reuse if applicable
             if job_id != "" {
-                try { cache.set("progress", repo_url, {"percent": 10, "stage": "clone", "message": "Repository ready"}, job_id=job_id); } except Exception as e { }
+                try {
+                    msg1 = "Repository ready";
+                    if was_cached { msg1 = "Re-using cached repo artefacts"; }
+                    cache.set("progress", repo_url, {"percent": 10, "stage": "clone", "message": msg1}, job_id=job_id);
+                } except Exception as e { }
             }
 
             # Check cache for file_tree

@@ -23,6 +23,19 @@ def _cache_dir() -> Path:
     return base
 
 
+def is_repo_cached(repo_url: str) -> bool:
+    """Return True if the repository URL maps to an existing local directory or a cached clone.
+    This performs only filesystem checks; no network calls.
+    """
+    p = Path(repo_url)
+    if p.exists() and p.is_dir():
+        return True
+    slug = _slugify(repo_url)
+    hashed = hashlib.sha1(repo_url.encode()).hexdigest()[:10]
+    target = _cache_dir() / f"{slug}-{hashed}"
+    return target.exists()
+
+
 def _git_available() -> bool:
     return shutil.which("git") is not None
 

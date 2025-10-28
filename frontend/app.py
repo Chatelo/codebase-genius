@@ -143,6 +143,19 @@ def animated_status(stage: str, base_message: str, job_id: str) -> str:
     }.get(stage, "Working")
     return f"{fallback} {frame}"
 
+
+# Small helper: detect cached hints and format a tiny chip (no raw HTML)
+def _has_cached_hint(text: str) -> bool:
+    try:
+        return isinstance(text, str) and ("cached" in text.lower())
+    except Exception:
+        return False
+
+
+def _add_cached_chip(msg: str) -> str:
+    # Keep it subtle and HTML-free per UI preference
+    return f"{msg} • 🟢 Cached"
+
 def render_stats(stats: Dict[str, Any]):
     """Render statistics in a nice grid layout."""
     st.subheader("📊 Repository Statistics")
@@ -474,6 +487,9 @@ def main():
         # Reset animation counter for this job
         st.session_state[f"anim_{job_id}"] = 0
 
+        # Reset cached chip flag for this job
+        st.session_state[f"cached_seen_{job_id}"] = False
+
 
         # Poll progress until the background thread finishes
         last_percent = 0
@@ -494,7 +510,15 @@ def main():
                 progress_bar.progress(percent)
                 icon, label = STAGE_LABELS.get(stage, ("⏳", stage))
                 animated = animated_status(stage, message, job_id)
-                status_box.info(f"{icon} {percent}% • {label} — {animated}")
+                cached_key = f"cached_seen_{job_id}"
+                hit_now = _has_cached_hint(message)
+                if hit_now:
+                    st.session_state[cached_key] = True
+                is_cached = hit_now or st.session_state.get(cached_key, False)
+                status_text = f"{icon} {percent}% • {label} — {animated}"
+                if is_cached:
+                    status_text = _add_cached_chip(status_text)
+                status_box.info(status_text)
 
                 # Update lightweight activity log (last 5 events) after clamping percent
                 if (stage != last_stage) or (percent > last_percent):
@@ -522,10 +546,21 @@ def main():
         result = result_container.get("result") or {"status": "error", "message": "Failed to get result"}
         if result.get("status") == "success":
             consolidated = "✅ 100% • done — Completed · Success! Documentation generated successfully."
+            cached_key = f"cached_seen_{job_id}"
+            was_from_cache = bool(result.get("from_cache")) if isinstance(result, dict) else False
+            final_is_cached = was_from_cache or st.session_state.get(cached_key, False)
+            if final_is_cached:
+                consolidated = _add_cached_chip(consolidated)
             status_box.success(consolidated)
         else:
             # Show error in the status box to avoid contradictory messages
-            status_box.error(f"❌ {result.get('message', 'Failed to generate documentation')}")
+            err_line = f"❌ {result.get('message', 'Failed to generate documentation')}"
+            cached_key = f"cached_seen_{job_id}"
+            was_from_cache = bool(result.get("from_cache")) if isinstance(result, dict) else False
+            final_is_cached = was_from_cache or st.session_state.get(cached_key, False)
+            if final_is_cached:
+                err_line = _add_cached_chip(err_line)
+            status_box.error(err_line)
 
         # Display results
         if result.get("status") == "error":
