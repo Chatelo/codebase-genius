@@ -119,39 +119,29 @@ STAGE_LABELS = {
     "error": ("❌", "error"),
 }
 SPINNER_FRAMES = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
-CLONE_PHASES = [
-    "🔗 Connecting to GitHub",
-    "🧮 Counting objects",
-    "📦 Receiving objects",
-    "🧩 Resolving deltas",
-    "📁 Checking out",
-]
 
 def animated_status(stage: str, base_message: str, job_id: str) -> str:
     key = f"anim_{job_id}"
     cnt = st.session_state.get(key, 0)
     st.session_state[key] = cnt + 1
     frame = SPINNER_FRAMES[cnt % len(SPINNER_FRAMES)]
-    if stage == "clone":
-        phase = CLONE_PHASES[(cnt // 3) % len(CLONE_PHASES)]
-        return f"{phase} {frame}"
-    if stage == "start":
-        return f"Preparing workspace {frame}"
-    if stage == "scan":
-        return f"Scanning repository structure {frame}"
-    if stage == "parse":
-        return f"Extracting entities {frame}"
-    if stage == "stats":
-        return f"Aggregating statistics {frame}"
-    if stage == "graph":
-        return f"Building code graph {frame}"
-    if stage == "docs":
-        return f"Generating documentation {frame}"
-    if stage == "diagrams":
-        return f"Rendering diagrams {frame}"
+    # Keep it real: prefer backend message; just add a light spinner
     if stage == "error":
         return base_message or "An error occurred"
-    return f"{base_message} {frame}" if base_message else f"Working {frame}"
+    if base_message:
+        return f"{base_message} {frame}"
+    # Fallback phrasing when backend omitted message
+    fallback = {
+        "start": "Preparing workspace",
+        "clone": "Cloning repository",
+        "scan": "Scanning repository structure",
+        "parse": "Extracting entities",
+        "stats": "Aggregating statistics",
+        "graph": "Building code graph",
+        "docs": "Generating documentation",
+        "diagrams": "Rendering diagrams",
+    }.get(stage, "Working")
+    return f"{fallback} {frame}"
 
 def render_stats(stats: Dict[str, Any]):
     """Render statistics in a nice grid layout."""
@@ -437,10 +427,23 @@ def main():
             prog_resp = call_get_progress(repo_url, job_id)
             if isinstance(prog_resp, dict):
                 prog = prog_resp.get("progress") or {}
-                percent = int(prog.get("percent", last_percent))
+                raw_percent = int(prog.get("percent", last_percent))
                 stage = prog.get("stage", "start")
                 message = prog.get("message", "Working...")
-                # Update lightweight activity log (last 5 events)
+
+                # If backend reports completion, finalize once and break to avoid duplicates
+                if (raw_percent >= 100) or (stage == "done"):
+                    progress_bar.progress(100)
+                    status_box.success("✅ 100% • done — Completed")
+                    break
+
+                percent = max(min(raw_percent, 99), last_percent)
+                progress_bar.progress(percent)
+                icon, label = STAGE_LABELS.get(stage, ("⏳", stage))
+                animated = animated_status(stage, message, job_id)
+                status_box.info(f"{icon} {percent}% • {label} — {animated}")
+
+                # Update lightweight activity log (last 5 events) after clamping percent
                 if (stage != last_stage) or (percent > last_percent):
                     label_for_log = STAGE_LABELS.get(stage, ("", stage))[1]
                     line = f"{percent}% • {label_for_log} — {message}"
@@ -451,12 +454,6 @@ def main():
                     activity_box.caption("  ·  ".join(st.session_state[log_key]))
                     last_stage = stage
 
-                percent = max(percent, last_percent)
-                percent = min(percent, 99)
-                progress_bar.progress(percent)
-                icon, label = STAGE_LABELS.get(stage, ("⏳", stage))
-                animated = animated_status(stage, message, job_id)
-                status_box.info(f"{icon} {percent}% • {label} — {animated}")
                 last_percent = percent
             time.sleep(1.0)
 
