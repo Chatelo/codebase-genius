@@ -7,6 +7,8 @@ import from agents.Supervisor { build_overview }
 import from graph.builders { build_repo_graph }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
 import from utils.output { save_results_to_disk }
+import from utils.cache { get_cache }
+
 
 glob llm = Model(model_name="gpt-4o-mini");
 
@@ -52,6 +54,8 @@ walker generate_docs {
     has exclude_dirs: list = [];
     has save_locally: bool = True;
     has outputs_dir: str = "outputs";
+    has job_id: str = "";
+
 
     has return_full_data: bool = True;
 
@@ -78,12 +82,23 @@ walker generate_docs {
     }
 
     can process with `root entry {
+        cache = get_cache();
+        step_total = 7;
+        if self.include_diagrams { step_total = 8; }
+        # Initial progress
+        if self.job_id != "" {
+            try { cache.set("progress", self.repo_url, {"percent": 5, "stage": "start", "message": "Starting analysis", "step_index": 0, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+        }
         # Build an overview via Supervisor helpers (stub unless depth=="deep")
-        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.include_globs, self.include_paths, self.max_files, self.max_file_size_bytes, self.top_n, self.use_cache);
+        overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.include_globs, self.include_paths, self.max_files, self.max_file_size_bytes, self.top_n, self.use_cache, self.job_id);
         file_tree = overview["file_tree"];
         stats = overview["stats"];
         entities = {};
         if "entities" in overview { entities = overview["entities"]; }
+        if self.job_id != "" {
+            try { cache.set("progress", self.repo_url, {"percent": 60, "stage": "overview", "message": "Repository analyzed", "step_index": 3, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+        }
+
 
         # Build the Code Context Graph (CCG) from files + entities
         try {
@@ -91,6 +106,12 @@ walker generate_docs {
         } except Exception as e {
             # Non-fatal: proceed even if graph build fails
             _repo_node = None;
+        }
+
+        if self.job_id != "" {
+            prog = {"percent": 75, "stage": "graph", "message": "Code graph built", "step_index": 4, "step_total": step_total};
+            if _repo_node == None { prog["percent"] = 65; prog["message"] = "Graph build failed; continuing"; }
+            try { cache.set("progress", self.repo_url, prog, job_id=self.job_id); } except Exception as e { }
         }
 
             # NOTE: EdgeBuilder pass removed; build_repo_graph creates typed edges directly
@@ -172,6 +193,10 @@ walker generate_docs {
         } else {
             doc = f"[Stub] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
         }
+        if self.job_id != "" {
+            try { cache.set("progress", self.repo_url, {"percent": 85, "stage": "docs", "message": "Documentation generated", "step_index": 5, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+        }
+
 
         ccg = {"calls": 0, "inherits": 0, "imports": 0};
         if _repo_node != None {
@@ -213,6 +238,14 @@ walker generate_docs {
                 diagrams["class_hierarchy"] = make_class_hierarchy_mermaid(entities, self.diagram_max_edges_class, self.diagram_filter_tests);
                 diagrams["module_graph"] = make_module_graph_mermaid(entities, self.diagram_max_edges_module, self.diagram_filter_tests);
             } except Exception as e { diagrams = {}; }
+            if self.job_id != "" {
+                try { cache.set("progress", self.repo_url, {"percent": 95, "stage": "diagrams", "message": "Diagrams generated", "step_index": 6, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+            }
+        } else {
+            if self.job_id != "" {
+                try { cache.set("progress", self.repo_url, {"percent": 90, "stage": "docs", "message": "Documentation ready", "step_index": 5, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+            }
+
         }
 
         # Save to disk if enabled
@@ -222,6 +255,10 @@ walker generate_docs {
                 saved_paths = save_results_to_disk(self.repo_url, doc, diagrams, stats, self.outputs_dir);
             } except Exception as e { saved_paths = {}; }
         }
+        if self.job_id != "" {
+            try { cache.set("progress", self.repo_url, {"percent": 100, "stage": "done", "message": "Completed", "step_index": step_total, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
+        }
+
 
         # Optionally reduce response payload
         rtree = file_tree;
@@ -234,6 +271,7 @@ walker generate_docs {
         report {
             "status": "success",
             "repo_url": self.repo_url,
+            "job_id": self.job_id,
             "depth": self.depth,
             "include_diagrams": self.include_diagrams,
             "file_tree": rtree,
@@ -248,3 +286,27 @@ walker generate_docs {
 }
 
 
+
+walker api_get_progress {
+    has repo_url: str = "";
+    has job_id: str = "";
+
+    obj __specs__ { static has auth: bool = False; }
+
+    can process with `root entry {
+        cache = get_cache();
+        prog = {};
+        try {
+            if (self.repo_url != "") and (self.job_id != "") {
+                p = cache.get("progress", self.repo_url, job_id=self.job_id);
+                if p != None { prog = p; }
+            }
+        } except Exception as e { }
+        report {
+            "status": "success",
+            "repo_url": self.repo_url,
+            "job_id": self.job_id,
+            "progress": prog
+        };
+    }
+}

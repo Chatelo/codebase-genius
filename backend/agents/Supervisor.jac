@@ -23,6 +23,7 @@ def build_overview(
     max_file_size_bytes: int = 0,
     top_n: int = 10,
     use_cache: bool = True,
+    job_id: str = "",
 ) -> dict {
     if depth == "deep" {
         # Initialize cache
@@ -50,6 +51,10 @@ def build_overview(
 
         try {
             repo_path = clone_or_open_repo(repo_url);
+            # Progress: repo cloned/opened
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 10, "stage": "clone", "message": "Repository ready"}, job_id=job_id); } except Exception as e { }
+            }
 
             # Check cache for file_tree
             files = None;
@@ -96,6 +101,11 @@ def build_overview(
                     );
                 }
             }
+            # Progress: file tree ready
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 30, "stage": "scan", "message": "File tree scanned"}, job_id=job_id); } except Exception as e { }
+            }
+
 
             # Check cache for entities
             entities = None;
@@ -114,6 +124,10 @@ def build_overview(
             }
 
             if entities == None {
+                # Progress: starting entity extraction
+                if job_id != "" {
+                    try { cache.set("progress", repo_url, {"percent": 35, "stage": "parse", "message": "Extracting entities"}, job_id=job_id); } except Exception as e { }
+                }
                 entities = extract_entities(repo_path, files);
                 # Cache entities
                 if use_cache {
@@ -130,6 +144,20 @@ def build_overview(
                         max_file_size_bytes=max_file_size_bytes
                     );
                 }
+                # Progress: entities extracted
+                if job_id != "" {
+                    try { cache.set("progress", repo_url, {"percent": 55, "stage": "parse", "message": "Entities extracted"}, job_id=job_id); } except Exception as e { }
+                }
+            } else {
+                # Progress: entities loaded from cache
+                if job_id != "" {
+                    try { cache.set("progress", repo_url, {"percent": 50, "stage": "parse", "message": "Entities loaded from cache"}, job_id=job_id); } except Exception as e { }
+                }
+            }
+
+            # Progress: computing stats
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 58, "stage": "stats", "message": "Computing repository stats"}, job_id=job_id); } except Exception as e { }
             }
 
             # Compute stats (fast, no need to cache separately)

@@ -3,6 +3,10 @@ import requests
 import json
 from typing import Dict, Any, List
 import streamlit.components.v1 as components
+import time
+import threading
+import uuid
+
 
 
 # Page configuration
@@ -65,7 +69,6 @@ def call_generate_docs(config: Dict[str, Any]) -> Dict[str, Any]:
         )
         response.raise_for_status()
         result = response.json()
-
         # Extract the first report from the response
         if "reports" in result and len(result["reports"]) > 0:
             return result["reports"][0]
@@ -78,6 +81,21 @@ def call_generate_docs(config: Dict[str, Any]) -> Dict[str, Any]:
         return {"status": "error", "message": f"API request failed: {str(e)}"}
     except Exception as e:
         return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+
+def call_get_progress(repo_url: str, job_id: str) -> Dict[str, Any]:
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/walker/api_get_progress",
+            json={"repo_url": repo_url, "job_id": job_id},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and "reports" in data and data["reports"]:
+            return data["reports"][0]
+        return data
+    except Exception:
+        return {"status": "error"}
 
 def format_file_size(size_bytes: int) -> str:
     """Format file size in human-readable format."""
@@ -309,6 +327,14 @@ def main():
         max_file_size_mb = st.number_input("Max File Size (MB)", min_value=0, value=0, help="0 = unlimited")
         max_file_size_bytes = max_file_size_mb * 1024 * 1024 if max_file_size_mb > 0 else 0
 
+        # Reduce payload toggle
+        return_full_data = st.checkbox(
+            "Return Full Data",
+            value=True,
+            help="Include complete file tree and entities in the response. Disable for very large repos.",
+        )
+
+
     # Main content area
     if generate_button:
         if not repo_url:
@@ -316,6 +342,7 @@ def main():
             return
 
         # Build configuration
+        job_id = str(uuid.uuid4())
         config = {
             "repo_url": repo_url,
             "depth": depth,
@@ -330,16 +357,46 @@ def main():
             "diagram_filter_tests": diagram_filter_tests,
             "diagram_max_edges_call": diagram_max_edges_call,
             "diagram_max_edges_class": diagram_max_edges_class,
-            "diagram_max_edges_module": diagram_max_edges_module
+            "diagram_max_edges_module": diagram_max_edges_module,
+            "return_full_data": return_full_data,
+            "job_id": job_id,
         }
 
         # Show configuration
         with st.expander("📋 Request Configuration"):
             st.json(config)
 
-        # Call API
-        with st.spinner("🔄 Analyzing repository... This may take a few minutes for large repos."):
-            result = call_generate_docs(config)
+        # Start request in background and poll progress
+        result_container: Dict[str, Any] = {"result": None}
+        def _run():
+            result_container["result"] = call_generate_docs(config)
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+        progress_bar = st.progress(0)
+        status_box = st.empty()
+
+        # Poll progress until the background thread finishes
+        last_percent = 0
+        while t.is_alive():
+            prog_resp = call_get_progress(repo_url, job_id)
+            if isinstance(prog_resp, dict):
+                prog = prog_resp.get("progress") or {}
+                percent = int(prog.get("percent", last_percent))
+                stage = prog.get("stage", "starting")
+                message = prog.get("message", "Working...")
+                percent = max(percent, last_percent)
+                percent = min(percent, 99)
+                progress_bar.progress(percent)
+                status_box.info(f"{percent}% • {stage} — {message}")
+                last_percent = percent
+            time.sleep(1.0)
+
+        # Join thread and fetch final result
+        t.join(timeout=1.0)
+        result = result_container.get("result") or {"status": "error", "message": "Failed to get result"}
+        progress_bar.progress(100)
+        status_box.success("100% • done — Completed")
 
 
         # Display results
@@ -440,7 +497,10 @@ def main():
 
             with tab4:
                 if "file_tree" in result:
-                    render_file_tree(result["file_tree"])
+                    if not result.get("file_tree") and not return_full_data:
+                        st.info("File tree not included in response (Return Full Data disabled). Enable in sidebar to view.")
+                    else:
+                        render_file_tree(result["file_tree"])
                 else:
                     st.info("No file tree available.")
 
