@@ -120,6 +120,137 @@ print(result["documentation"])
 
 ---
 
+---
+
+## 🧭 CCG API (Code Context Graph)
+
+These endpoints expose graph insights for functions, classes, and modules. All are public (auth=False) Jac walkers.
+
+Base URL in local dev: `http://localhost:8000`.
+
+- POST `/walker/api_ccg_overview`
+- POST `/walker/api_ccg_callers`
+- POST `/walker/api_ccg_callees`
+- POST `/walker/api_ccg_subclasses`
+- POST `/walker/api_ccg_dependencies`
+
+Notes
+- `depth`: "deep" builds a fuller graph; "standard" is lighter.
+- On errors, endpoints return `{ "status": "error", "message": str, "status_code": int? }`.
+- On success, endpoints include an `error` field inside the payload for non-fatal graph issues (string, may be empty).
+
+### Overview
+Request
+```json
+{
+  "repo_url": "https://github.com/org/repo",
+  "depth": "deep",
+  "top_n": 5
+}
+```
+Success response
+```json
+{
+  "status": "success",
+  "repo_url": "https://github.com/org/repo",
+  "overview": {
+    "counts": { "calls": 0, "inherits": 0, "imports": 0 },
+    "top": {
+      "functions": [{ "name": "pkg.mod.func", "count": 12 }],
+      "classes":   [{ "name": "pkg.mod.Base", "count": 5  }],
+      "modules":   [{ "name": "pkg.mod",      "count": 20 }]
+    },
+    "error": ""
+  }
+}
+```
+Error response
+```json
+{ "status": "error", "message": "repo_url is required", "status_code": 400 }
+```
+
+### Function Callers
+Request
+```json
+{
+  "repo_url": "https://github.com/org/repo",
+  "func_name": "pkg.module.function",
+  "depth": "deep"
+}
+```
+Success response
+```json
+{
+  "status": "success",
+  "repo_url": "https://github.com/org/repo",
+  "func_name": "pkg.module.function",
+  "results": [ { "name": "pkg.a.calling_func" }, "pkg.b.other_caller" ],
+  "error": ""
+}
+```
+
+### Function Callees
+Request/Response same shape as Callers, with `func_name` and `results` listing the functions called by the input function.
+
+### Class Subclasses
+Request
+```json
+{
+  "repo_url": "https://github.com/org/repo",
+  "class_name": "pkg.module.BaseClass",
+  "depth": "deep"
+}
+```
+Success response
+```json
+{
+  "status": "success",
+  "repo_url": "https://github.com/org/repo",
+  "class_name": "pkg.module.BaseClass",
+  "results": [ { "name": "pkg.module.Child" } ],
+  "error": ""
+}
+```
+
+### Module Dependencies
+Request
+```json
+{
+  "repo_url": "https://github.com/org/repo",
+  "module_name": "pkg.module",
+  "depth": "deep"
+}
+```
+Success response
+```json
+{
+  "status": "success",
+  "repo_url": "https://github.com/org/repo",
+  "module_name": "pkg.module",
+  "results": [ { "name": "pkg.other" } ],
+  "error": ""
+}
+```
+
+### cURL examples
+```bash
+# Overview
+curl -sX POST http://localhost:8000/walker/api_ccg_overview \
+  -H 'Content-Type: application/json' \
+  -d '{"repo_url":"https://github.com/org/repo","depth":"deep","top_n":5}' | jq
+
+# Callers
+curl -sX POST http://localhost:8000/walker/api_ccg_callers \
+  -H 'Content-Type: application/json' \
+  -d '{"repo_url":"https://github.com/org/repo","func_name":"pkg.module.func","depth":"deep"}' | jq
+```
+
+### Frontend integration
+- The Streamlit UI includes a dedicated tab: "🧭 CCG Explorer".
+- Provides: Overview metrics/top-N, Function Callers/Callees (with micro-mermaid diagrams), Class Subclasses, Module Dependencies.
+- Results can be copied/downloaded from the UI.
+
+
 ## 🏗️ Architecture
 
 ### Tech Stack
@@ -175,7 +306,7 @@ print(result["documentation"])
 
 Codebase Genius is designed with a graph-first architecture:
 
-**Nodes**: Repository, Directory, CodeFile, Function, Class, Module  
+**Nodes**: Repository, Directory, CodeFile, Function, Class, Module
 **Edges**: Contains, Defines, Calls, Inherits, Imports, References
 
 This enables advanced features like:
