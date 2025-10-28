@@ -363,75 +363,70 @@ def main():
         if "diagram_max_edges_module" not in st.session_state:
             st.session_state.diagram_max_edges_module = 400
 
-
-        # Analysis depth
+        # Essentials
         depth = st.selectbox(
             "Analysis Depth",
             options=["deep", "standard"],
             index=0,
             help="Deep mode clones and analyzes the full repository"
         )
+        use_llm = st.checkbox("Enable AI", value=True, help="Use LLM to generate comprehensive documentation")
 
-        # LLM settings
-        st.subheader("🤖 AI Settings")
-        use_llm = st.checkbox("Enable AI Documentation", value=True, help="Use LLM to generate comprehensive documentation")
-        include_diagrams = st.checkbox("Include Diagrams", key="include_diagrams", help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)")
-        diagram_filter_tests = st.checkbox("Filter test modules/classes/functions in diagrams", key="diagram_filter_tests")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            diagram_max_edges_call = st.number_input("Max Edges: Call Graph", min_value=50, max_value=2000, step=50, key="diagram_max_edges_call")
-        with col2:
-            diagram_max_edges_class = st.number_input("Max Edges: Class Hierarchy", min_value=50, max_value=2000, step=50, key="diagram_max_edges_class")
-        with col3:
-            diagram_max_edges_module = st.number_input("Max Edges: Module Graph", min_value=50, max_value=2000, step=50, key="diagram_max_edges_module")
-
-        top_n = st.slider("Top N Items", min_value=3, max_value=20, value=10, help="Number of top items to track")
-
-        # Filtering options
-        st.subheader("🔍 Filters")
-
-        with st.expander("Include Paths"):
-            include_paths_text = st.text_area(
-                "Path prefixes (one per line)",
-                placeholder="src/\nlib/\napp/",
-                help="Only scan files in these directories"
-            )
-            include_paths = [p.strip() for p in include_paths_text.split("\n") if p.strip()]
-
-        with st.expander("Include Extensions"):
-            use_default_exts = st.checkbox("Use default extensions", value=True)
-            if not use_default_exts:
-                include_exts_text = st.text_area(
-                    "File extensions (one per line)",
-                    placeholder=".py\n.js\n.ts",
-                    help="Only include files with these extensions"
-                )
-                include_exts = [e.strip() for e in include_exts_text.split("\n") if e.strip()]
-            else:
-                include_exts = []
-
-        with st.expander("Exclude Directories"):
-            exclude_dirs_text = st.text_area(
-                "Directory names (one per line)",
-                placeholder="build/\ndist/\n.cache/",
-                help="Skip these directories"
-            )
-            exclude_dirs = [d.strip() for d in exclude_dirs_text.split("\n") if d.strip()]
-
-        # Performance limits
-        st.subheader("⚡ Performance")
-        max_files = st.number_input("Max Files", min_value=0, value=0, help="0 = unlimited")
-        max_file_size_mb = st.number_input("Max File Size (MB)", min_value=0, value=0, help="0 = unlimited")
-        max_file_size_bytes = max_file_size_mb * 1024 * 1024 if max_file_size_mb > 0 else 0
-
-        # Reduce payload toggle
+        # Response size
         return_full_data = st.checkbox(
-            "Return Full Data",
+            "Full response",
             value=True,
             help="Include complete file tree and entities in the response. Disable for very large repos.",
         )
 
 
+        # Advanced (hidden by default)
+        with st.expander("Advanced Settings", expanded=False):
+            st.caption("Diagrams")
+            diagram_filter_tests = st.checkbox("Filter test modules/classes/functions in diagrams", key="diagram_filter_tests")
+            include_diagrams = st.checkbox("Include Diagrams", key="include_diagrams", help="Generate Mermaid diagrams (call graph, class hierarchy, module graph)")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                diagram_max_edges_call = st.number_input("Max Edges: Call Graph", min_value=50, max_value=2000, step=50, key="diagram_max_edges_call")
+            with col2:
+                diagram_max_edges_class = st.number_input("Max Edges: Class Hierarchy", min_value=50, max_value=2000, step=50, key="diagram_max_edges_class")
+            with col3:
+                diagram_max_edges_module = st.number_input("Max Edges: Module Graph", min_value=50, max_value=2000, step=50, key="diagram_max_edges_module")
+
+            st.caption("Metrics")
+            top_n = st.slider("Top N Items", min_value=3, max_value=20, value=10, help="Number of top items to track")
+
+            st.caption("Filters")
+            include_paths_text = st.text_area(
+                "Include Paths (one per line)",
+                placeholder="src/\nlib/\napp/",
+                help="Only scan files in these directories",
+            )
+            include_paths = [p.strip() for p in include_paths_text.split("\n") if p.strip()]
+
+            use_default_exts = st.checkbox("Use default extensions", value=True)
+            if not use_default_exts:
+                include_exts_text = st.text_area(
+                    "Include Extensions (one per line)",
+                    placeholder=".py\n.js\n.ts",
+                    help="Only include files with these extensions",
+                )
+                include_exts = [e.strip() for e in include_exts_text.split("\n") if e.strip()]
+            else:
+                include_exts = []
+
+            exclude_dirs_text = st.text_area(
+                "Exclude Directories (one per line)",
+                placeholder="build/\ndist/\n.cache/",
+                help="Skip these directories",
+            )
+            exclude_dirs = [d.strip() for d in exclude_dirs_text.split("\n") if d.strip()]
+
+            st.caption("Performance")
+            max_files = st.number_input("Max Files", min_value=0, value=0, help="0 = unlimited")
+            max_file_size_mb = st.number_input("Max File Size (MB)", min_value=0, value=0, help="0 = unlimited")
+            max_file_size_bytes = max_file_size_mb * 1024 * 1024 if max_file_size_mb > 0 else 0
     # Main content area
     if generate_button:
         if not repo_url:
@@ -629,7 +624,7 @@ def main():
             with tab4:
                 if "file_tree" in result:
                     if not result.get("file_tree") and not return_full_data:
-                        st.info("File tree not included in response (Return Full Data disabled). Enable in sidebar to view.")
+                        st.info("File tree not included in response (Include full response payload disabled). Enable in sidebar to view.")
                     else:
                         render_file_tree(result["file_tree"])
                 else:

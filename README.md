@@ -5,7 +5,7 @@
 Automatically analyze any GitHub repository and generate comprehensive, high-quality documentation using advanced AI and code analysis techniques.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
 ![JacLang](https://img.shields.io/badge/jaclang-0.8.10-purple.svg)
 ![Streamlit](https://img.shields.io/badge/streamlit-1.39.0-red.svg)
 
@@ -362,5 +362,4 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Built with ❤️ using JacLang and Streamlit**
 
