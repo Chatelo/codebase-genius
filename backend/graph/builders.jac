@@ -19,12 +19,18 @@ def build_repo_graph(
     entities: dict,
     build_typed_edges: bool = True
 ) -> any {
-    # Create Repository node
-    repo_node = root_node ++> Repository(url=repo_url);
+    # Create Repository node (robust: attach to root if possible, else standalone)
+    repo_node = None;
+    try { repo_node = root_node ++> Repository(url=repo_url); }
+    except Exception as e { repo_node = Repository(url=repo_url); }
 
     # Repo name from URL
     url_parts = repo_url.rstrip('/').split('/');
     repo_node.name = (url_parts[-1] if len(url_parts) > 0 else "");
+
+    # Defensive defaults for inputs
+    if files == None { files = []; }
+    if entities == None { entities = {"files": []}; }
 
     # Track nodes
     dir_nodes = {};              # path -> Directory
@@ -150,6 +156,7 @@ def build_repo_graph(
                                 edge_stats["calls"] += 1;
                             } except Exception as e {
                                 # Fallback to default edge if typed edge fails
+                                print(f"[build_repo_graph] Calls edge failed for {caller} -> {callee}: {str(e)}; falling back to default edge");
                                 caller ++> callee;
                             }
                         } else {
@@ -178,6 +185,7 @@ def build_repo_graph(
                                     edge_stats["inherits"] += 1;
                                 } except Exception as e {
                                     # Fallback to default edge if typed edge fails
+                                    print(f"[build_repo_graph] Inherits edge failed for {sub} -> {base}: {str(e)}; falling back to default edge");
                                     sub ++> base;
                                 }
                             } else {
@@ -214,6 +222,7 @@ def build_repo_graph(
                             edge_stats["imports"] += 1;
                         } except Exception as e {
                             # Fallback to default edge if typed edge fails
+                            print(f"[build_repo_graph] Imports edge failed for {mod_src} -> {tgt}: {str(e)}; falling back to default edge");
                             mod_src ++> tgt;
                         }
                     } else {

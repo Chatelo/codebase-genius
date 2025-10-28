@@ -153,7 +153,8 @@ def scan_repo_tree(
             # Stat size (skip files over limit if configured)
             try:
                 size = p.stat().st_size
-            except Exception:
+            except Exception as e:
+                print(f"[scan_repo_tree] Could not stat size for {rel}: {e}")
                 size = 0
             if max_file_size_bytes and size > max_file_size_bytes:
                 continue
@@ -166,7 +167,8 @@ def scan_repo_tree(
                 try:
                     mb = max_line_count_bytes or DEFAULT_MAX_LINECOUNT_BYTES
                     meta["lines"] = int(_count_lines_fast(p, int(mb)))
-                except Exception:
+                except Exception as e:
+                    print(f"[scan_repo_tree] Could not count lines for {rel}: {e}")
                     meta["lines"] = 0
 
             out.append(meta)
@@ -203,7 +205,8 @@ def extract_readme(root_path: str) -> Optional[Dict]:
                     "size": readme_path.stat().st_size,
                     "lines": len(content.splitlines())
                 }
-            except Exception:
+            except Exception as e:
+                print(f"[extract_readme] Failed reading {name}: {e}")
                 continue
 
     return None

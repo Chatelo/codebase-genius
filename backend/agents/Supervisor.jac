@@ -202,6 +202,10 @@ def build_overview(
 
             return result;
         } except Exception as e {
+            # Report error progress
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 40, "stage": "error", "message": str(e)}, job_id=job_id); } except Exception as _e { }
+            }
             # Fall back to stub on error
             files = sample_file_tree();
             stats = basic_stats(files, top_n);

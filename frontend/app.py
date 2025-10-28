@@ -418,8 +418,8 @@ def main():
                 if saved.get("statistics_path"):
                     st.text(f"Statistics: {saved['statistics_path']}")
 
-            # Create tabs for different views (added 📈 Diagrams)
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data"])
+            # Create tabs for different views (added 📈 Diagrams and ⚠️ Errors)
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data", "⚠️ Errors"])
 
             with tab1:
 
@@ -507,7 +507,29 @@ def main():
             with tab5:
                 st.subheader("Raw API Response")
                 st.json(result)
+
+            with tab6:
+                ents = result.get("entities") or {}
+                errs = []
+                if isinstance(ents, dict):
+                    errs = ents.get("errors") or []
+                errs_obj = result.get("errors") if isinstance(result.get("errors"), dict) else {}
+                ov_err = errs_obj.get("overview") if isinstance(errs_obj, dict) else None
+                graph_err = errs_obj.get("graph") if isinstance(errs_obj, dict) else None
+                total = len(errs) + (1 if ov_err else 0) + (1 if graph_err else 0)
+                st.subheader(f"Errors ({total})")
+                if ov_err:
+                    st.error(f"Overview error: {ov_err}")
+                if graph_err:
+                    st.error(f"Graph build error: {graph_err}")
+                if errs:
+                    for i, e in enumerate(errs[:200], 1):
+                        st.write(f"{i}. {e.get('file', 'unknown')}: {e.get('error', '')}")
+                if total == 0:
+                    st.info("No errors were recorded.")
+
         else:
+
             st.warning("Unexpected response format from API")
             st.json(result)
     else:

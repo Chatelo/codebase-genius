@@ -89,6 +89,16 @@ walker generate_docs {
         if self.job_id != "" {
             try { cache.set("progress", self.repo_url, {"percent": 5, "stage": "start", "message": "Starting analysis", "step_index": 0, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
         }
+        # Validate input
+        if self.repo_url == "" {
+            report {
+                "status": "error",
+                "error_type": "ValidationError",
+                "message": "repo_url is required",
+                "status_code": 400
+            };
+        }
+
         # Build an overview via Supervisor helpers (stub unless depth=="deep")
         overview = build_overview(self.repo_url, self.depth, self.exclude_dirs, self.exclude_globs, self.include_exts, self.include_globs, self.include_paths, self.max_files, self.max_file_size_bytes, self.top_n, self.use_cache, self.job_id);
         file_tree = overview["file_tree"];
@@ -98,19 +108,43 @@ walker generate_docs {
         if self.job_id != "" {
             try { cache.set("progress", self.repo_url, {"percent": 60, "stage": "overview", "message": "Repository analyzed", "step_index": 3, "step_total": step_total}, job_id=self.job_id); } except Exception as e { }
         }
+        # Fatal: repo clone/access errors  stop early with clear message
+        if ("error" in overview) {
+            err_msg = overview["error"];
+            if ("Failed to clone repository" in err_msg) or ("GitPython is not available" in err_msg) {
+                if self.job_id != "" {
+                    try { cache.set("progress", self.repo_url, {"percent": 15, "stage": "clone", "message": err_msg}, job_id=self.job_id); } except Exception as e { }
+                }
+                report {
+                    "status": "error",
+                    "error_type": "RepoAccessError",
+                    "message": err_msg,
+                    "repo_url": self.repo_url,
+                    "job_id": self.job_id,
+                    "status_code": 400
+                };
+            }
+        }
+
 
 
         # Build the Code Context Graph (CCG) from files + entities
+        graph_error = "";
         try {
             _repo_node = build_repo_graph(here, self.repo_url, file_tree, entities);
         } except Exception as e {
             # Non-fatal: proceed even if graph build fails
             _repo_node = None;
+            graph_error = str(e);
+            print(f"[generate_docs] Graph build error: {graph_error}");
         }
 
         if self.job_id != "" {
             prog = {"percent": 75, "stage": "graph", "message": "Code graph built", "step_index": 4, "step_total": step_total};
-            if _repo_node == None { prog["percent"] = 65; prog["message"] = "Graph build failed; continuing"; }
+            if _repo_node == None {
+                prog["percent"] = 65;
+                prog["message"] = f"Graph build failed: {graph_error}";
+            }
             try { cache.set("progress", self.repo_url, prog, job_id=self.job_id); } except Exception as e { }
         }
 
@@ -268,6 +302,13 @@ walker generate_docs {
             rentities = {"files": []};
         }
 
+        # Collect errors to include in response (non-breaking addition)
+        errors_obj = {};
+        try { if "errors" in entities { errors_obj["entities"] = entities["errors"]; } } except Exception as e { }
+        try { if "error" in overview { errors_obj["overview"] = overview["error"]; } } except Exception as e { }
+        if graph_error != "" { errors_obj["graph"] = graph_error; }
+
+
         report {
             "status": "success",
             "repo_url": self.repo_url,
@@ -280,7 +321,8 @@ walker generate_docs {
             "ccg": ccg,
             "documentation": doc,
             "diagrams": diagrams,
-            "saved": saved_paths
+            "saved": saved_paths,
+            "errors": errors_obj
         };
     }
 }

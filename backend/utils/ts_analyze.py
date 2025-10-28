@@ -170,13 +170,11 @@ def _naive_extract(path: Path, language: str) -> Dict[str, Any]:
 def _process_single_file(args: tuple) -> Dict[str, Any]:
     """
     Process a single file for entity extraction.
-    This function is designed to be called in parallel.
 
-    Args:
-        args: Tuple of (repo_root, item_dict)
-
-    Returns:
-        Extracted entities for the file
+    Returns a dict:
+      - {"__ok__": True, "data": <entity_dict>} on success
+      - {"__error__": {"file": <path>, "error": <str>}} on failure
+      - None for non-CodeFile items or missing files
     """
     repo_root, item = args
     root = Path(repo_root).resolve()
@@ -189,7 +187,7 @@ def _process_single_file(args: tuple) -> Dict[str, Any]:
     file_path = (root / rel_path).resolve()
 
     if not file_path.exists():
-        return None
+        return {"__error__": {"file": str(file_path), "error": "File does not exist"}}
 
     try:
         data = _ts_extract(file_path, language) if get_parser is not None else _naive_extract(file_path, language)
@@ -197,10 +195,10 @@ def _process_single_file(args: tuple) -> Dict[str, Any]:
         data["file"] = str(file_path)
         data["module"] = _module_name_for(Path(rel_path), language)
         data["language"] = language
-        return data
-    except Exception:
-        # Skip files that fail to parse
-        return None
+        return {"__ok__": True, "data": data}
+    except Exception as e:
+        # Return structured error for failed parses
+        return {"__error__": {"file": str(file_path), "error": str(e)}}
 
 
 def extract_entities(repo_root: str, file_tree: List[Dict], parallel: bool = True, max_workers: int = None) -> Dict:
@@ -229,11 +227,16 @@ def extract_entities(repo_root: str, file_tree: List[Dict], parallel: bool = Tru
     if not use_parallel:
         # Sequential processing for small file sets
         results: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
         for item in code_files:
-            data = _process_single_file((repo_root, item))
-            if data is not None:
-                results.append(data)
-        return {"files": results}
+            out = _process_single_file((repo_root, item))
+            if not out:
+                continue
+            if isinstance(out, dict) and out.get("__ok__"):
+                results.append(out["data"])
+            elif isinstance(out, dict) and "__error__" in out:
+                errors.append(out["__error__"])
+        return {"files": results, "errors": errors}
 
     # Parallel processing for larger file sets
     if max_workers is None:
@@ -241,23 +244,29 @@ def extract_entities(repo_root: str, file_tree: List[Dict], parallel: bool = Tru
         max_workers = min(multiprocessing.cpu_count(), 8)
 
     results: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
 
     # Prepare arguments for parallel processing
     args_list = [(repo_root, item) for item in code_files]
 
     # Use ProcessPoolExecutor for CPU-bound parsing work
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
         futures = {executor.submit(_process_single_file, args): args for args in args_list}
 
-        # Collect results as they complete
         for future in as_completed(futures):
             try:
-                data = future.result()
-                if data is not None:
-                    results.append(data)
-            except Exception:
-                # Skip files that fail to parse
-                pass
+                out = future.result()
+                if not out:
+                    continue
+                if isinstance(out, dict) and out.get("__ok__"):
+                    results.append(out["data"])
+                elif isinstance(out, dict) and "__error__" in out:
+                    errors.append(out["__error__"])
+            except Exception as e:
+                # Record unexpected worker failure
+                args = futures.get(future)
+                fitem = args[1] if args else {}
+                fpath = fitem.get("path", "")
+                errors.append({"file": fpath, "error": str(e)})
 
-    return {"files": results}
+    return {"files": results, "errors": errors}

@@ -47,7 +47,10 @@ def clone_or_open_repo(repo_url: str) -> str:
             "GitPython is not available. Please install deps with: uv sync"
         )
 
-    # Clone
-    Repo.clone_from(repo_url, str(target))
+    # Clone with basic error handling
+    try:
+        Repo.clone_from(repo_url, str(target))
+    except Exception as e:
+        raise RuntimeError(f"Failed to clone repository: {repo_url}. {str(e)}")
     return str(target.resolve())
 
