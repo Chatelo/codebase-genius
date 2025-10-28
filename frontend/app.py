@@ -886,6 +886,57 @@ def main():
                             )
 
 
+                    # Graph Stats (Walker)
+                    with st.expander("📊 Graph Stats (Walker)", expanded=False):
+                        gk = f"gstats::{lr}::{ld}::{tn}"
+                        refresh_stats = st.button("🔄 Refresh Graph Stats", key="ccg_refresh_gstats")
+                        if refresh_stats:
+                            st.session_state.ccg_cache.pop(gk, None)
+                        data_st = st.session_state.ccg_cache.get(gk)
+                        if data_st is None:
+                            with st.spinner("Computing graph stats…"):
+                                data_st = call_graph_stats(lr, ld, tn)
+                                st.session_state.ccg_cache[gk] = data_st
+                        if data_st.get("status") != "success":
+                            st.error(data_st.get("message", "Failed to compute graph stats"))
+                        else:
+                            st.success("Graph stats ready")
+                            stats_payload = data_st.get("stats") or {}
+                            # Reuse the existing stats renderer if payload aligns
+                            try:
+                                render_stats(stats_payload)
+                            except Exception:
+                                st.json(stats_payload)
+                            st.download_button("⬇️ Download Graph Stats (JSON)", data=json.dumps(stats_payload, indent=2), file_name="graph_stats.json", mime="application/json")
+
+                    # Graph Docs (Walker)
+                    with st.expander("📝 Graph Docs (Walker)", expanded=False):
+                        gkd = f"gdocs::{lr}::{ld}::{tn}"
+                        refresh_docs = st.button("🔄 Refresh Graph Docs", key="ccg_refresh_gdocs")
+                        if refresh_docs:
+                            st.session_state.ccg_cache.pop(gkd, None)
+                        data_doc = st.session_state.ccg_cache.get(gkd)
+                        if data_doc is None:
+                            with st.spinner("Collecting documentation aggregates…"):
+                                data_doc = call_graph_docs(lr, ld, tn)
+                                st.session_state.ccg_cache[gkd] = data_doc
+                        if data_doc.get("status") != "success":
+                            st.error(data_doc.get("message", "Failed to collect doc aggregates"))
+                        else:
+                            doc_payload = data_doc.get("docs") or {}
+                            c1, c2, c3 = st.columns([1, 1, 2])
+                            with c1:
+                                st.metric("Total Functions", doc_payload.get("total_functions", 0))
+                            with c2:
+                                st.metric("API Classes", len(doc_payload.get("api_classes", [])))
+                            st.caption("Top Files by Lines (from walker)")
+                            for idx, it in enumerate(doc_payload.get("top_files", [])[:tn], 1):
+                                st.text(f"{idx}. {it.get('path','unknown')} ({it.get('lines',0):,} lines)")
+                            if doc_payload.get("api_classes"):
+                                st.caption("API Classes")
+                                st.table([{ "Class": c } for c in doc_payload.get("api_classes", [])[:tn]])
+                            st.download_button("⬇️ Download Graph Docs (JSON)", data=json.dumps(doc_payload, indent=2), file_name="graph_docs.json", mime="application/json")
+
                     # Function Callers
                     with st.expander("🧰 Function Callers", expanded=False):
                         with st.form("form_ccg_callers"):

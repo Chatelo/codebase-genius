@@ -106,6 +106,47 @@
         }
       }
     }
+,
+    {
+      "name": "Graph Stats (Walker)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"depth\": \"deep\",\n  \"top_n\": 10\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_graph_stats",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_graph_stats"]
+        }
+      }
+    },
+    {
+      "name": "Graph Docs (Walker)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"repo_url\": \"https://github.com/org/repo\",\n  \"depth\": \"deep\",\n  \"top_n\": 10\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8000/walker/api_graph_docs",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["walker", "api_graph_docs"]
+        }
+      }
+    }
   ]
 }
 

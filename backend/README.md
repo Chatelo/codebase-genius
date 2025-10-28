@@ -3,7 +3,7 @@
 This backend is implemented in JacLang with AI-powered walkers (by llm).
 
 Current status:
-- Production walkers: `generate_docs`, `api_ccg_overview`, `api_ccg_callers`, `api_ccg_callees`, `api_ccg_subclasses`, `api_ccg_dependencies`
+- Production walkers: `generate_docs`, `api_ccg_overview`, `api_ccg_callers`, `api_ccg_callees`, `api_ccg_subclasses`, `api_ccg_dependencies`, `api_graph_stats`, `api_graph_docs`
 - Agents implemented: Supervisor (orchestration), RepoMapper (repo mapping), CodeAnalyzer (stats + CCG), DocGenie (LLM docs)
 - Robust validation and error handling; no global caches or leaks
 
@@ -92,4 +92,37 @@ curl -sX POST http://localhost:8000/walker/api_ccg_overview \
 curl -sX POST http://localhost:8000/walker/api_ccg_callers \
   -H 'Content-Type: application/json' \
   -d '{"repo_url":"https://github.com/org/repo","func_name":"pkg.module.func","depth":"deep"}' | jq
+```
+
+
+---
+
+## 🧭 Graph Traversal API (Stats + Docs)
+
+Additional public walkers that operate over the built repository graph.
+
+Endpoints
+- POST `/walker/api_graph_stats`
+- POST `/walker/api_graph_docs`
+
+Notes
+- `depth`: "deep" builds a fuller graph; "standard" is lighter.
+- Success responses include an `error` string for non‑fatal graph issues.
+
+Graph Stats request
+```json
+{ "repo_url": "https://github.com/org/repo", "depth": "deep", "top_n": 10 }
+```
+Graph Stats success response (shape)
+```json
+{ "status":"success", "repo_url":"...", "stats": { "files":0, "code_files":0, "docs":0, "tests_files":0, "examples_files":0, "languages":{}, "top_dirs":{}, "top_dirs_code":{}, "top_files_by_size":[{"path":"src/a.py","size":12345}], "top_files_by_lines":[{"path":"src/a.py","lines":420}], "ccg_counts":{"calls":0,"inherits":0,"imports":0} }, "error":"" }
+```
+
+Graph Docs request
+```json
+{ "repo_url": "https://github.com/org/repo", "depth": "deep", "top_n": 10 }
+```
+Graph Docs success response (shape)
+```json
+{ "status":"success", "repo_url":"...", "docs": { "top_files":[{"path":"src/a.py","lines":420}], "api_classes":["pkg.mod.Base"], "total_functions": 123 }, "error":"" }
 ```

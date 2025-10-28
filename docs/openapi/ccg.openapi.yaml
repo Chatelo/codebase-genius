@@ -122,6 +122,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /walker/api_graph_stats:
+    post:
+      summary: Compute repository statistics from the graph
+      operationId: api_graph_stats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphStatsRequest'
+      responses:
+        '200':
+          description: Graph stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphStatsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /walker/api_graph_docs:
+    post:
+      summary: Collect documentation-oriented aggregates from the graph
+      operationId: api_graph_docs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphDocsRequest'
+      responses:
+        '200':
+          description: Graph docs aggregates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphDocsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     ErrorResponse:
@@ -320,4 +367,142 @@ components:
         error:
           type: string
       required: [status, repo_url, module_name, results]
+    GraphStatsRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        depth:
+          type: string
+          description: Graph build depth
+          enum: [deep, standard]
+          default: deep
+        top_n:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+      required: [repo_url]
+    TopFileSize:
+      type: object
+      properties:
+        path:
+          type: string
+        size:
+          type: integer
+          format: int64
+      required: [path, size]
+    TopFileLines:
+      type: object
+      properties:
+        path:
+          type: string
+        lines:
+          type: integer
+      required: [path, lines]
+    GraphStatsPayload:
+      type: object
+      properties:
+        files:
+          type: integer
+        code_files:
+          type: integer
+        docs:
+          type: integer
+        tests_files:
+          type: integer
+        examples_files:
+          type: integer
+        languages:
+          type: object
+          additionalProperties:
+            type: integer
+        doc_kinds:
+          type: object
+          additionalProperties:
+            type: integer
+        top_dirs:
+          type: object
+          additionalProperties:
+            type: integer
+        top_dirs_code:
+          type: object
+          additionalProperties:
+            type: integer
+        top_files_by_size:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopFileSize'
+        top_files_by_lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopFileLines'
+        ccg_counts:
+          type: object
+          properties:
+            calls:
+              type: integer
+            inherits:
+              type: integer
+            imports:
+              type: integer
+    GraphStatsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        repo_url:
+          type: string
+          format: uri
+        stats:
+          $ref: '#/components/schemas/GraphStatsPayload'
+        error:
+          type: string
+      required: [status, repo_url, stats]
+    GraphDocsRequest:
+      type: object
+      properties:
+        repo_url:
+          type: string
+          format: uri
+        depth:
+          type: string
+          enum: [deep, standard]
+          default: deep
+        top_n:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+      required: [repo_url]
+    GraphDocsPayload:
+      type: object
+      properties:
+        top_files:
+          type: array
+          items:
+            $ref: '#/components/schemas/TopFileLines'
+        api_classes:
+          type: array
+          items:
+            type: string
+        total_functions:
+          type: integer
+    GraphDocsResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        repo_url:
+          type: string
+          format: uri
+        docs:
+          $ref: '#/components/schemas/GraphDocsPayload'
+        error:
+          type: string
+      required: [status, repo_url, docs]
+
 

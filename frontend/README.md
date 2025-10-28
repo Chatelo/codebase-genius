@@ -229,5 +229,8 @@ All sections include robust error handling, caching, and download/copy helpers.
 - POST `/walker/api_ccg_callees` — { repo_url, func_name, depth }
 - POST `/walker/api_ccg_subclasses` — { repo_url, class_name, depth }
 - POST `/walker/api_ccg_dependencies` — { repo_url, module_name, depth }
+- POST `/walker/api_graph_stats` — { repo_url, depth, top_n }
+- POST `/walker/api_graph_docs` — { repo_url, depth, top_n }
+
 
 See the root README for full request/response schemas and cURL examples.
