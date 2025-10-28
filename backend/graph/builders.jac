@@ -388,7 +388,7 @@ def collect_stats_from_repo(repo: Repository, top_n: int = 10) -> dict {
             if ("ccg_inherits" in repo) { ccg_inherits = len(repo.ccg_inherits); }
             if ("ccg_imports" in repo) { ccg_imports = len(repo.ccg_imports); }
         }
-    } catch Exception as e { }
+    } except Exception as e { }
 
     return {
         "files": total,

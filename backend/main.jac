@@ -481,7 +481,7 @@ walker generate_docs {
         }
 
         # Compose structured Markdown documentation with required sections
-        title_md = f"# Documentation for {self.repo_url}\n\n";
+        title_md = "# Documentation for " + self.repo_url + "\n\n";
         overview_md = "## Project Overview\n\n";
         ov_text = doc_overview;
         if ov_text == "" { ov_text = "No overview generated."; }
@@ -766,7 +766,7 @@ walker api_graph_stats {
         try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
         st = {}; err = gerr;
         if _repo_node != None {
-            try { st = collect_stats_from_repo(_repo_node, self.top_n); } catch Exception as e { err = str(e); st = {}; }
+            try { st = collect_stats_from_repo(_repo_node, self.top_n); } except Exception as e { err = str(e); st = {}; }
         }
         report {"status": "success", "repo_url": self.repo_url, "stats": st, "error": err};
     }
@@ -788,7 +788,7 @@ walker api_graph_docs {
         try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
         docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; err = gerr;
         if _repo_node != None {
-            try { docd = doc_collect(_repo_node, ents, self.top_n); } catch Exception as e { err = str(e); docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; }
+            try { docd = doc_collect(_repo_node, ents, self.top_n); } except Exception as e { err = str(e); docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; }
         }
         report {"status": "success", "repo_url": self.repo_url, "docs": docd, "error": err};
     }
