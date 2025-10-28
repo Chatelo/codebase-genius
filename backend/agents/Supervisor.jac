@@ -8,6 +8,147 @@ import from utils.fs_map { scan_repo_tree, extract_readme, summarize_readme_sect
 import from utils.ts_analyze { extract_entities }
 import from utils.cache { get_cache }
 
+# --- Entry-point prioritization helpers ---
+# Heuristics to identify and score likely repo entry-points (Python/JS/TS/Jac)
+
+def _is_test_path(p: str) -> bool {
+    lp = p.lower();
+    if ("/tests/" in lp) or ("/test/" in lp) or lp.startswith("tests/") or lp.startswith("test/") { return True; }
+    if ("/spec/" in lp) or lp.startswith("spec/") or ("/specs/" in lp) or lp.startswith("specs/") { return True; }
+    return False;
+}
+
+# Return a simple depth (number of components - 1)
+def _path_depth(p: str) -> int {
+    parts = p.split("/");
+    return (len(parts) - 1);
+}
+
+# Extract filename only
+
+def _basename(p: str) -> str {
+    parts = p.split("/");
+    if len(parts) == 0 { return p; }
+    return parts[len(parts) - 1];
+}
+
+# Scoring by filename patterns and shallow depth; higher = more likely entry-point
+
+def _score_entry_point(path: str) -> int {
+    lp = path.lower();
+    bn = _basename(lp);
+    score = 0;
+
+    # Hard negative for tests/specs
+    if _is_test_path(lp) { return 0; }
+
+    # Strong Python signals
+    if bn == "__main__.py" { score += 120; }
+    if bn == "main.py" { score += 110; }
+    if bn == "app.py" { score += 100; }
+    if bn == "run.py" or bn == "server.py" or bn == "manage.py" { score += 95; }
+    if bn == "wsgi.py" or bn == "asgi.py" or bn == "cli.py" or bn == "api.py" { score += 90; }
+
+    # JS/TS front/back entry files
+    if bn == "index.js" or bn == "index.ts" or bn == "index.tsx" or bn == "index.jsx" { score += 95; }
+    if bn == "app.js" or bn == "app.ts" or bn == "app.tsx" { score += 90; }
+    if bn == "server.js" or bn == "server.ts" { score += 90; }
+    if bn == "main.js" or bn == "main.ts" { score += 88; }
+
+    # Jac
+    if bn == "main.jac" or bn == "app.jac" { score += 95; }
+
+    # Location bonuses
+    d = _path_depth(lp);
+    if d == 0 { score += 15; }            # repo root
+    if d == 1 { score += 8; }             # shallow
+    if (lp.startswith("src/")) { score += 8; }
+    if ("/bin/" in lp) { score += 6; }
+
+    return score;
+}
+
+# Build an entry-point prioritization plan from a file_tree
+# Returns { "entry_points": [ {path, score}... ], "analysis_order": [paths...] }
+
+def _prioritize_entry_points(file_tree: list, top_n: int = 10) -> dict {
+    # Collect candidate code files with scores
+    candidates = [];
+    for item in file_tree {
+        if ("type" in item) and (item["type"] == "CodeFile") {
+            p = ""; ln = 0;
+            if "path" in item { p = item["path"]; }
+            if p == "" { continue; }
+            s = _score_entry_point(p);
+            if s > 0 {
+                if "lines" in item { ln = item["lines"]; }
+                candidates.append({"path": p, "score": s, "lines": ln});
+            }
+        }
+    }
+
+    # Sort candidates by score desc, then lines desc (manual insertion sort)
+    ranked = [];
+    for c in candidates {
+        inserted = False;
+        i = 0;
+        while i < len(ranked) {
+            if (c["score"] > ranked[i]["score"]) or ((c["score"] == ranked[i]["score"]) and (c.get("lines", 0) > ranked[i].get("lines", 0))) {
+                ranked.insert(i, c);
+                inserted = True;
+                break;
+            }
+            i += 1;
+        }
+        if not inserted { ranked.append(c); }
+    }
+
+    # Truncate to top N entry points
+    entry_points = [];
+    cnt = 0;
+    for r in ranked {
+        if cnt >= top_n { break; }
+        entry_points.append({"path": r["path"], "score": r["score"]});
+        cnt += 1;
+    }
+
+    # Build the overall analysis order: entry points first, then remaining code files by lines desc
+    ep_set = {};
+    for e in entry_points { ep_set[e["path"]] = True; }
+
+    rest = [];
+    for item2 in file_tree {
+        if ("type" in item2) and (item2["type"] == "CodeFile") {
+            p2 = item2.get("path", "");
+            if p2 == "" { continue; }
+            if p2 in ep_set { continue; }
+            if _is_test_path(p2) { continue; }
+            ln2 = 0; if "lines" in item2 { ln2 = item2["lines"]; }
+            rest.append({"path": p2, "lines": ln2});
+        }
+    }
+    # Sort rest by lines desc
+    rest_sorted = [];
+    for r2 in rest {
+        inserted2 = False; j = 0;
+        while j < len(rest_sorted) {
+            if r2.get("lines", 0) > rest_sorted[j].get("lines", 0) {
+                rest_sorted.insert(j, r2);
+                inserted2 = True;
+                break;
+            }
+            j += 1;
+        }
+        if not inserted2 { rest_sorted.append(r2); }
+    }
+
+    analysis_order = [];
+    for e2 in entry_points { analysis_order.append(e2["path"]); }
+    for r3 in rest_sorted { analysis_order.append(r3["path"]); }
+
+    return {"entry_points": entry_points, "analysis_order": analysis_order};
+}
+
 #* Build an overview by coordinating RepoMapper/CodeAnalyzer.
 # If depth == "deep", perform real mapping and analysis. Otherwise, return stubbed data.
 *#
@@ -124,6 +265,14 @@ def build_overview(
             }
 
 
+            # Entry-point prioritization plan
+            plan = _prioritize_entry_points(files, top_n);
+            ep_count = 0;
+            try { ep_count = len(plan["entry_points"]); } except Exception as e { ep_count = 0; }
+            if job_id != "" {
+                try { cache.set("progress", repo_url, {"percent": 33, "stage": "plan", "message": f"Prioritized entry points ({ep_count})"}, job_id=job_id); } except Exception as e { }
+            }
+
             # Check cache for entities
             entities = None;
             if use_cache {
@@ -141,11 +290,53 @@ def build_overview(
             }
 
             if entities == None {
-                # Progress: starting entity extraction
+                # Progress: starting entity extraction (entry points first)
                 if job_id != "" {
-                    try { cache.set("progress", repo_url, {"percent": 35, "stage": "parse", "message": "Extracting entities"}, job_id=job_id); } except Exception as e { }
+                    try { cache.set("progress", repo_url, {"percent": 35, "stage": "parse", "message": "Extracting entities (entry points first)"}, job_id=job_id); } except Exception as e { }
                 }
-                entities = extract_entities(repo_path, files);
+
+                # Determine prioritized vs. rest sets
+                pri_paths = [];
+                if "entry_points" in plan {
+                    for ep in plan["entry_points"] { if "path" in ep { pri_paths.append(ep["path"]); } }
+                }
+
+                code_items = [];
+                for it in files { if ("type" in it) and (it["type"] == "CodeFile") { code_items.append(it); } }
+
+                pri_items = [];
+                rest_items = [];
+                if len(pri_paths) > 0 {
+                    pri_set = {};
+                    for pp in pri_paths { pri_set[pp] = True; }
+                    for it2 in code_items {
+                        pth2 = ""; if "path" in it2 { pth2 = it2["path"]; }
+                        if (pth2 != "") and (pth2 in pri_set) { pri_items.append(it2); }
+                        else { rest_items.append(it2); }
+                    }
+                } else {
+                    rest_items = code_items;
+                }
+
+                # Extract entities: entry points first, then the rest
+                ent_acc_files = [];
+                ent_acc_errors = [];
+                if (len(pri_items) > 0) and (len(rest_items) > 0) {
+                    ent1 = extract_entities(repo_path, pri_items, False);
+                    if ("files" in ent1) { for a in ent1["files"] { ent_acc_files.append(a); } }
+                    if ("errors" in ent1) { for e1 in ent1["errors"] { ent_acc_errors.append(e1); } }
+                    if job_id != "" {
+                        try { cache.set("progress", repo_url, {"percent": 45, "stage": "parse", "message": f"Entry points analyzed ({len(pri_items)})"}, job_id=job_id); } except Exception as e { }
+                    }
+                    ent2 = extract_entities(repo_path, rest_items);
+                    if ("files" in ent2) { for b in ent2["files"] { ent_acc_files.append(b); } }
+                    if ("errors" in ent2) { for e2 in ent2["errors"] { ent_acc_errors.append(e2); } }
+                    entities = {"files": ent_acc_files, "errors": ent_acc_errors};
+                } else {
+                    # Single-pass extraction
+                    entities = extract_entities(repo_path, files);
+                }
+
                 # Cache entities
                 if use_cache {
                     cache.set(
@@ -197,6 +388,7 @@ def build_overview(
                 "entities": entities,
                 "readme": readme_data,
                 "readme_summary": readme_summary,
+                "plan": plan,
                 "from_cache": False,
             };
 
@@ -233,7 +425,8 @@ def build_overview(
     # Stub path
     files = sample_file_tree();
     stats = basic_stats(files, top_n);
-    return {"file_tree": files, "stats": stats, "repo_url": repo_url, "depth": depth, "from_cache": False};
+    plan = _prioritize_entry_points(files, top_n);
+    return {"file_tree": files, "stats": stats, "repo_url": repo_url, "depth": depth, "plan": plan, "from_cache": False};
 }
 
 walker Supervisor {
