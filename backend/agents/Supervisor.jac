@@ -1,8 +1,8 @@
 # Orchestrator walker (minimal -> real-ready)
 
-import from agents.RepoMapper { RepoMapper, sample_file_tree }
-import from agents.CodeAnalyzer { CodeAnalyzer, basic_stats }
-import from agents.DocGenie { DocGenie }
+import from agents.RepoMapper { sample_file_tree }
+import from agents.CodeAnalyzer { basic_stats }
+
 import from utils.repo { clone_or_open_repo, is_repo_cached }
 import from utils.fs_map { scan_repo_tree, extract_readme, summarize_readme_sections }
 import from utils.ts_analyze { extract_entities }
@@ -184,8 +184,6 @@ def _iterative_scheduler(file_tree: list, entities: dict, plan: dict, max_iters:
 
     # Build entity indices
     func_to_files = {};         # name -> [rel_paths]
-    file_funcs = {};            # rel_path -> [fn]
-    module_by_file = {};        # rel_path -> module
     module_to_file = {};        # module -> rel_path (first hit)
 
     if (entities != None) and ("files" in entities) {
@@ -194,7 +192,6 @@ def _iterative_scheduler(file_tree: list, entities: dict, plan: dict, max_iters:
             if rel == "" { continue; }
             # Functions
             flist = fe.get("functions", []);
-            file_funcs[rel] = flist;
             for fn in flist {
                 if fn not in func_to_files { func_to_files[fn] = []; }
                 func_to_files[fn].append(rel);
@@ -202,7 +199,6 @@ def _iterative_scheduler(file_tree: list, entities: dict, plan: dict, max_iters:
             # Module
             mod = fe.get("module", "");
             if mod != "" {
-                module_by_file[rel] = mod;
                 if mod not in module_to_file { module_to_file[mod] = rel; }
             }
         }
@@ -326,7 +322,7 @@ def _iterative_scheduler(file_tree: list, entities: dict, plan: dict, max_iters:
 }
 
 
-#* Build an overview by coordinating RepoMapper/CodeAnalyzer.
+#* Build an overview by coordinating mapping and analysis helpers.
 # If depth == "deep", perform real mapping and analysis. Otherwise, return stubbed data.
 *#
 def build_overview(
