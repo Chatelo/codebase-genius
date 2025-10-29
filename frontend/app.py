@@ -417,31 +417,92 @@ def render_file_tree(file_tree: List[Dict[str, Any]]):
 
 # Mermaid rendering helper (no extra package; embeds mermaid.js)
 def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
-    st.markdown(f"#### {title}")
-    if not isinstance(diagram, str) or not diagram.strip():
-        st.info("No diagram available.")
-        return
-    components.html(
-        f"""
+        """Render a Mermaid diagram inside Streamlit using an isolated HTML snippet.
+
+        This uses a <pre class="mermaid"> wrapper and the modern mermaid.run API
+        (recommended for v10+). Using an ES module import and `mermaid.run` makes
+        rendering more reliable in the iframe created by Streamlit's components.html.
+        """
+        st.markdown(f"#### {title}")
+        if not isinstance(diagram, str) or not diagram.strip():
+                st.info("No diagram available.")
+                return
+
+        # Use <pre class="mermaid"> as the canonical container per Mermaid docs and
+        # use the esm module so we can await mermaid.run() which is the recommended
+        # approach for v10+ and v11.
+        safe_diagram = diagram
+        html = f"""
         <div>
-          <div class=\"mermaid\">
-{diagram}
-          </div>
+            <pre class="mermaid">{safe_diagram}</pre>
         </div>
-        <script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>
-        <script>
-          if (window.mermaid) {{
-            mermaid.initialize({{ startOnLoad: true, securityLevel: 'loose' }});
-            mermaid.contentLoaded();
-          }} else {{
-            document.addEventListener('DOMContentLoaded', function () {{
-              mermaid.initialize({{ startOnLoad: true, securityLevel: 'loose' }});
-            }});
-          }}
+        <script type="module">
+            // Import the ESM build of mermaid and run rendering explicitly. This
+            // ensures rendering happens after the library is available and we can
+            // target the '.mermaid' selector inside this HTML fragment.
+            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+            try {{
+                mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
+                (async () => {{
+                    try {{
+                        await mermaid.run({{ querySelector: '.mermaid', suppressErrors: true }});
+                    }} catch (err) {{
+                        // Fail soft: log into the iframe console so debugging is possible.
+                        console.error('Mermaid render error:', err);
+                    }}
+                }})();
+            }} catch (e) {{
+                console.error('Mermaid init/import failed', e);
+            }}
         </script>
-        """,
-        height=height,
-    )
+        """
+
+        components.html(html, height=height)
+
+
+def render_markdown_with_mermaid(documentation: str):
+        """Render markdown that may contain ```mermaid fenced blocks.
+
+        For each mermaid fenced block we render it using components.html (so the
+        Mermaid library can run), and for other markdown we use st.markdown. This
+        avoids showing raw mermaid text in Streamlit's markdown renderer.
+        """
+        import re
+
+        if not documentation:
+                return
+
+        # Pattern captures content inside ```mermaid\n ... ``` (non-greedy)
+        pat = re.compile(r"```mermaid\n(.*?)\n```", re.S)
+        last = 0
+        for m in pat.finditer(documentation):
+                pre = documentation[last:m.start()]
+                if pre.strip():
+                        st.markdown(pre)
+                mmd = m.group(1) or ""
+                # Render the mermaid fragment without an extra title
+                html = f"""
+                <div>
+                    <pre class=\"mermaid\">{mmd}</pre>
+                </div>
+                <script type=\"module\">
+                    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+                    try {{
+                        mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
+                        (async () => {{
+                            try {{
+                                await mermaid.run({{ querySelector: '.mermaid', suppressErrors: true }});
+                            }} catch (err) {{ console.error('Mermaid render error:', err); }}
+                        }})();
+                    }} catch (e) {{ console.error('Mermaid init/import failed', e); }}
+                </script>
+                """
+                components.html(html, height=400)
+                last = m.end()
+
+        tail = documentation[last:]
+        if tail.strip():
+                st.markdown(tail)
 
 # Copy-to-clipboard helper for .mmd strings
 def copy_mmd_button(label: str, mmd: str, key: str):
@@ -742,7 +803,9 @@ def main():
 
                 st.subheader("Generated Documentation")
                 documentation = result.get("documentation", "No documentation generated.")
-                st.markdown(documentation)
+                # Render documentation but process any mermaid fenced blocks so
+                # diagrams appear rendered instead of raw code blocks.
+                render_markdown_with_mermaid(documentation)
 
                 # Download button
                 st.download_button(
