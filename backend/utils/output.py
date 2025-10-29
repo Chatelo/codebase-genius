@@ -325,11 +325,53 @@ def build_structured_markdown(
         except Exception:
             pass
 
+    # Compute README web URL for linking (used in Installation fallback and Usage Examples)
+    def _normalize_repo_web_url(u: str) -> str:
+        try:
+            if not u:
+                return ""
+            base = u.strip().rstrip("/")
+            # Convert SSH to HTTPS for GitHub
+            if base.startswith("git@github.com:"):
+                rest = base.split(":", 1)[1]
+                base = f"https://github.com/{rest}"
+            # Strip .git suffix
+            if base.endswith(".git"):
+                base = base[:-4]
+            # If looks like org/repo, assume GitHub
+            if ("://" not in base) and ("@" not in base) and ("/" in base):
+                base = f"https://github.com/{base}"
+            return base
+        except Exception:
+            return u or ""
+
+    try:
+        rd = (overview or {}).get("readme") if isinstance(overview, dict) else None
+        readme_path = (rd or {}).get("path") or ""
+    except Exception:
+        readme_path = ""
+
+    base_web = _normalize_repo_web_url(repo_url)
+    readme_url = base_web
+    if base_web and "github.com" in base_web:
+        readme_url = f"{base_web}/blob/HEAD/{readme_path}" if readme_path else f"{base_web}#readme"
+    else:
+        if readme_path:
+            sep = "" if base_web.endswith("/") else "/"
+            readme_url = f"{base_web}{sep}{readme_path}" if base_web else readme_path
+    link_label = readme_path or "README"
+
     # Balance fences to avoid leaking blocks into subsequent sections
     inst_txt = _balance_fences(inst_txt)
     use_txt = _balance_fences(use_txt)
 
-    inst_md = "## Installation\n\n" + (inst_txt or "Refer to the repository README for installation instructions.") + "\n\n"
+    if inst_txt:
+        inst_md = "## Installation\n\n" + inst_txt + "\n\n"
+    else:
+        inst_md = (
+            "## Installation\n\n"
+            f"Refer to the repository README for installation instructions: [{link_label}]({readme_url}).\n\n"
+        )
     # Getting Started focuses on running/using after setup; when README provides usage, move it here
     if use_txt:
         getting_started_body = use_txt
@@ -571,48 +613,7 @@ def build_structured_markdown(
     if ccg_mermaid:
         cites_md += ccg_mermaid + "\n\n"
     # Additional template sections (lightweight placeholders to match style)
-    # Usage Examples — point to repository README with a real URL
-    def _normalize_repo_web_url(u: str) -> str:
-        try:
-            if not u:
-                return ""
-            base = u.strip().rstrip("/")
-            # Convert SSH to HTTPS for GitHub
-            if base.startswith("git@github.com:"):
-                rest = base.split(":", 1)[1]
-                base = f"https://github.com/{rest}"
-            # Strip .git suffix
-            if base.endswith(".git"):
-                base = base[:-4]
-            # If looks like org/repo, assume GitHub
-            if ("://" not in base) and ("@" not in base) and ("/" in base):
-                base = f"https://github.com/{base}"
-            return base
-        except Exception:
-            return u or ""
-
-    readme_path = ""
-    try:
-        rd = (overview or {}).get("readme") if isinstance(overview, dict) else None
-        readme_path = (rd or {}).get("path") or ""
-    except Exception:
-        readme_path = ""
-
-    base_web = _normalize_repo_web_url(repo_url)
-    readme_url = base_web
-    # Prefer GitHub-friendly blob link when possible
-    if base_web and "github.com" in base_web:
-        if readme_path:
-            readme_url = f"{base_web}/blob/HEAD/{readme_path}"
-        else:
-            readme_url = f"{base_web}#readme"
-    else:
-        # Fallback: append README path if available, else leave base URL
-        if readme_path:
-            sep = "" if base_web.endswith("/") else "/"
-            readme_url = f"{base_web}{sep}{readme_path}" if base_web else readme_path
-
-    link_label = readme_path or "README"
+    # Usage Examples — point to repository README with a real URL (using computed readme_url)
     usage_examples_md = (
         "## 💡 Usage Examples\n\n"
         f"+ See README for examples: [{link_label}]({readme_url}).\n\n"
