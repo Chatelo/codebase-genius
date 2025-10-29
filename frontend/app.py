@@ -422,7 +422,7 @@ def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
         Improvements:
         - HTML-escape special characters in diagram source to avoid HTML parsing issues
         - Unique container scoping so multiple diagrams never conflict
-        - Robust loader: try ESM first, then fall back to UMD build if ESM import fails
+        - Single global Mermaid.js loader to prevent conflicts between multiple diagrams
         - Looser security level to allow long labels and special chars in nodes
         """
         st.markdown(f"#### {title}")
@@ -431,65 +431,109 @@ def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
                 return
 
         from html import escape as _html_escape
+        import json
 
         container_id = f"mmd-{uuid.uuid4().hex}"
-        # Escape only &,<,> leaving quotes as-is to keep Mermaid labels intact
+        # Escape the diagram content for safe embedding in HTML
         safe_diagram = _html_escape(diagram, quote=False)
+        
         html = f"""
-        <div id="{container_id}" style="width:100%;">
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
             <style>
-                /* Ensure visible overflow for large diagrams and monospace font for consistency */
+                body {{
+                    margin: 0;
+                    padding: 16px;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                    background: white;
+                }}
+                #{container_id} {{
+                    width: 100%;
+                    overflow: auto;
+                }}
                 #{container_id} .mermaid {{
-                    display:block; width:100%; overflow:auto; font-family: ui-monospace, monospace;
+                    display: block;
+                    width: 100%;
+                    overflow: visible;
+                    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                    background: #fafafa;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 8px;
+                    padding: 20px;
+                }}
+                .error-box {{
+                    background: #fee;
+                    border: 2px solid #c33;
+                    border-radius: 4px;
+                    padding: 12px;
+                    color: #c33;
+                    font-family: monospace;
+                    white-space: pre-wrap;
                 }}
             </style>
-            <pre class="mermaid">{safe_diagram}</pre>
-        </div>
-        <script type="module">
-            const scopeSel = '#{container_id} .mermaid';
-            async function esmRender() {{
-                const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
-                mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
-                await mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
-                return true;
-            }}
-            (async () => {{
-                try {{
-                    await esmRender();
-                }} catch (e) {{
-                    console.warn('ESM mermaid failed, falling back to UMD', e);
-                    // Fallback to UMD build
-                    function loadScript(src) {{
-                        return new Promise((resolve, reject) => {{
-                            const s = document.createElement('script');
-                            s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
-                            document.head.appendChild(s);
-                        }});
-                    }}
-                    try {{
-                        await loadScript('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js');
-                    }} catch (e2) {{
-                        try {{ await loadScript('https://unpkg.com/mermaid@11/dist/mermaid.min.js'); }} catch (e3) {{ console.error('UMD load failed', e2, e3); }}
-                    }}
-                    try {{
-                        if (window.mermaid) {{
-                            window.mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
-                            // UMD exposes contentLoaded to render existing elements
-                            if (typeof window.mermaid.run === 'function') {{
-                                await window.mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
-                            }} else if (typeof window.mermaid.contentLoaded === 'function') {{
-                                window.mermaid.contentLoaded();
+        </head>
+        <body>
+            <div id="{container_id}">
+                <div class="mermaid">{safe_diagram}</div>
+            </div>
+            
+            <script type="module">
+                // Global flag to ensure Mermaid is loaded only once per iframe
+                if (!window.mermaidLoaded) {{
+                    window.mermaidLoaded = true;
+                    window.mermaidQueue = [];
+                    
+                    async function loadAndRenderMermaid() {{
+                        try {{
+                            // Try loading Mermaid ESM module
+                            const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+                            
+                            // Initialize with loose security for complex diagrams
+                            mermaid.initialize({{
+                                startOnLoad: false,
+                                securityLevel: 'loose',
+                                theme: 'default',
+                                flowchart: {{
+                                    useMaxWidth: true,
+                                    htmlLabels: true,
+                                    curve: 'basis'
+                                }}
+                            }});
+                            
+                            // Render the diagram
+                            const container = document.querySelector('#{container_id} .mermaid');
+                            if (container) {{
+                                await mermaid.run({{
+                                    nodes: [container],
+                                    suppressErrors: false
+                                }});
+                                console.log('Mermaid diagram rendered successfully');
                             }}
-                        }} else {{
-                            console.error('Mermaid UMD not available after load');
+                        }} catch (err) {{
+                            console.error('Failed to load or render Mermaid:', err);
+                            const container = document.querySelector('#{container_id}');
+                            if (container) {{
+                                container.innerHTML = `
+                                    <div class="error-box">
+                                        <strong>Error rendering Mermaid diagram:</strong><br>
+                                        ${{err.message || err}}
+                                    </div>
+                                `;
+                            }}
                         }}
-                    }} catch (e4) {{ console.error('Mermaid UMD render failed', e4); }}
+                    }}
+                    
+                    // Start loading and rendering
+                    loadAndRenderMermaid();
                 }}
-            }})();
-        </script>
+            </script>
+        </body>
+        </html>
         """
 
-        components.html(html, height=height)
+        components.html(html, height=height, scrolling=True)
 
 
 def render_markdown_with_mermaid(documentation: str):
@@ -515,52 +559,98 @@ def render_markdown_with_mermaid(documentation: str):
                 mmd = m.group(1) or ""
                 container_id = f"mmd-{uuid.uuid4().hex}"
                 safe_mmd = _html_escape(mmd, quote=False)
+                
                 html = f"""
-                <div id=\"{container_id}\" style=\"width:100%;\">
-                    <pre class=\"mermaid\">{safe_mmd}</pre>
-                </div>
-                <script type=\"module\">
-                    const scopeSel = '#{container_id} .mermaid';
-                    async function esmRender() {{
-                        const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
-                        mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
-                        await mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
-                        return true;
-                    }}
-                    (async () => {{
-                        try {{
-                            await esmRender();
-                        }} catch (e) {{
-                            console.warn('ESM mermaid failed, falling back to UMD', e);
-                            function loadScript(src) {{
-                                return new Promise((resolve, reject) => {{
-                                    const s = document.createElement('script');
-                                    s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
-                                    document.head.appendChild(s);
-                                }});
-                            }}
-                            try {{
-                                await loadScript('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js');
-                            }} catch (e2) {{
-                                try {{ await loadScript('https://unpkg.com/mermaid@11/dist/mermaid.min.js'); }} catch (e3) {{ console.error('UMD load failed', e2, e3); }}
-                            }}
-                            try {{
-                                if (window.mermaid) {{
-                                    window.mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
-                                    if (typeof window.mermaid.run === 'function') {{
-                                        await window.mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
-                                    }} else if (typeof window.mermaid.contentLoaded === 'function') {{
-                                        window.mermaid.contentLoaded();
-                                    }}
-                                }} else {{
-                                    console.error('Mermaid UMD not available after load');
-                                }}
-                            }} catch (e4) {{ console.error('Mermaid UMD render failed', e4); }}
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        body {{
+                            margin: 0;
+                            padding: 16px;
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                            background: white;
                         }}
-                    }})();
-                </script>
+                        #{container_id} {{
+                            width: 100%;
+                            overflow: auto;
+                        }}
+                        #{container_id} .mermaid {{
+                            display: block;
+                            width: 100%;
+                            overflow: visible;
+                            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                            background: #fafafa;
+                            border: 1px solid #e0e0e0;
+                            border-radius: 8px;
+                            padding: 20px;
+                        }}
+                        .error-box {{
+                            background: #fee;
+                            border: 2px solid #c33;
+                            border-radius: 4px;
+                            padding: 12px;
+                            color: #c33;
+                            font-family: monospace;
+                            white-space: pre-wrap;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <div id="{container_id}">
+                        <div class="mermaid">{safe_mmd}</div>
+                    </div>
+                    
+                    <script type="module">
+                        // Each iframe is isolated, so we can load Mermaid independently
+                        async function loadAndRenderMermaid() {{
+                            try {{
+                                // Try loading Mermaid ESM module
+                                const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+                                
+                                // Initialize with loose security for complex diagrams
+                                mermaid.initialize({{
+                                    startOnLoad: false,
+                                    securityLevel: 'loose',
+                                    theme: 'default',
+                                    flowchart: {{
+                                        useMaxWidth: true,
+                                        htmlLabels: true,
+                                        curve: 'basis'
+                                    }}
+                                }});
+                                
+                                // Render the diagram
+                                const container = document.querySelector('#{container_id} .mermaid');
+                                if (container) {{
+                                    await mermaid.run({{
+                                        nodes: [container],
+                                        suppressErrors: false
+                                    }});
+                                    console.log('Mermaid diagram rendered successfully');
+                                }}
+                            }} catch (err) {{
+                                console.error('Failed to load or render Mermaid:', err);
+                                const container = document.querySelector('#{container_id}');
+                                if (container) {{
+                                    container.innerHTML = `
+                                        <div class="error-box">
+                                            <strong>Error rendering Mermaid diagram:</strong><br>
+                                            ${{err.message || err}}
+                                        </div>
+                                    `;
+                                }}
+                            }}
+                        }}
+                        
+                        // Start loading and rendering
+                        loadAndRenderMermaid();
+                    </script>
+                </body>
+                </html>
                 """
-                components.html(html, height=420)
+                components.html(html, height=420, scrolling=True)
                 last = m.end()
 
         tail = documentation[last:]
