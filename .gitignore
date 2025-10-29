@@ -7,3 +7,5 @@ doc/
 scripts
 .augment
 .augmentignore
+mk-format.md
+promt.md
