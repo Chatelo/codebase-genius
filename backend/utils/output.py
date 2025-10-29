@@ -181,18 +181,70 @@ def build_structured_markdown(
     doc_overview: str = "",
     entities: Optional[Dict] = None,
 ) -> str:
-    """Compose a deterministic Markdown document with required sections.
+    """Compose a deterministic Markdown document aligned to mk-format template.
 
-    Sections produced:
-      - # Documentation for <repo_url>
-      - ## Project Overview
-      - ## Installation
-      - ## Usage
-      - ## API Reference (summary)
-      - ## Diagrams (mermaid blocks if enabled and present)
-      - ## Citations (CCG)
+    Required compatibility (preserved):
+    - Keep legacy headings: "# Documentation for", "## Project Overview",
+      "## Installation", "## Usage", "## API Reference (summary)",
+      "## Diagrams", "## Citations (CCG)" so existing tests remain green.
+    - Preserve normalization/dedup and Detailed API (inferred) section.
+    - Enrich to follow mk-format.md ordering and style by adding: badges,
+      Table of Contents, Key Features, Quick Start, Project Structure,
+      Core Architecture, Code Context Graph section, Development, Testing,
+      Contributing, Project Statistics, Additional Resources, Acknowledgments.
     """
+    # --- derive helpful context from provided overview/stats ---
+    stats = {}
+    if overview and isinstance(overview, dict):
+        try:
+            stats = overview.get("stats", {}) or {}
+        except Exception:
+            stats = {}
+    repo_name = repo_name_from_url(repo_url)
+    # Primary language heuristic
+    primary_language = "unknown"
+    try:
+        langs = stats.get("languages") or {}
+        if isinstance(langs, dict) and langs:
+            # choose max by lines/files if available, key by count otherwise
+            def _lang_metric(v):
+                if isinstance(v, dict):
+                    return v.get("lines", 0) or v.get("files", 0) or 0
+                return int(v) if isinstance(v, (int, float)) else 0
+            primary_language = max(langs.items(), key=lambda kv: _lang_metric(kv[1]))[0]
+    except Exception:
+        pass
+    license_name = (overview or {}).get("license") or stats.get("license") or "unknown"
+    last_commit = stats.get("last_commit_date") or stats.get("last_commit") or "unknown"
+    # Title and badges (template-inspired)
     title_md = f"# Documentation for {repo_url}\n\n"
+    badges_md = (
+        f"[![Language](https://img.shields.io/badge/language-{_sanitize_name(primary_language)}-blue)]()\n"
+        f"[![License](https://img.shields.io/badge/license-{_sanitize_name(str(license_name))}-green)]()\n"
+        f"[![Last Commit](https://img.shields.io/badge/last_commit-{_sanitize_name(str(last_commit))}-orange)]()\n\n"
+    )
+
+    # Table of Contents — mirrors mk-format.md ordering
+    toc_md = (
+        "## 📋 Table of Contents\n\n"
+        "- [Overview](#project-overview)\n"
+        "- [Key Features](#key-features)\n"
+        "- [Installation](#installation)\n"
+        "- [Usage](#usage)\n"
+        "- [Quick Start](#quick-start)\n"
+        "- [Project Structure](#project-structure)\n"
+        "- [Core Architecture](#core-architecture)\n"
+        "- [API Reference](#api-reference-summary)\n"
+        "- [Code Context Graph](#code-context-graph)\n"
+        "- [Usage Examples](#usage-examples)\n"
+        "- [Configuration](#configuration)\n"
+        "- [Development](#development)\n"
+        "- [Testing](#testing)\n"
+        "- [Contributing](#contributing)\n"
+        "- [Project Statistics](#project-statistics)\n"
+        "- [Additional Resources](#additional-resources)\n"
+        "- [Acknowledgments](#acknowledgments)\n\n"
+    )
 
     # Overview
     ov_text = _normalize_text(doc_overview or "")
@@ -201,6 +253,32 @@ def build_structured_markdown(
     if not ov_text:
         ov_text = "No overview generated."
     overview_md = "## Project Overview\n\n" + ov_text + "\n\n"
+
+    # Key Features (best-effort auto-synthesis)
+    feats = []
+    try:
+        total_files = stats.get("files")
+        code_files = stats.get("code_files")
+        tests_files = stats.get("tests_files")
+        if total_files is not None:
+            feats.append(f"Processes repository with {total_files} files")
+        if code_files is not None:
+            feats.append(f"Understands code across {code_files} source files")
+        if primary_language and primary_language != "unknown":
+            feats.append(f"Language-aware analysis (primary: {primary_language})")
+        if include_diagrams:
+            feats.append("Generates Mermaid diagrams for call/class/module relations")
+        if tests_files:
+            feats.append(f"Identifies tests: {tests_files} test files detected")
+    except Exception:
+        pass
+    if not feats:
+        feats = [
+            "Automated repository overview",
+            "Inferred API surface with classes and functions",
+            "Optional diagrams for relationships",
+        ]
+    key_features_md = "## ✨ Key Features\n\n" + "\n".join([f"- **{f}**" for f in feats]) + "\n\n"
 
     # Installation / Usage (extract from README sections if available)
     inst_txt = ""; use_txt = ""
@@ -222,7 +300,45 @@ def build_structured_markdown(
     use_txt = _dedupe_blocks(_strip_md_headings(_normalize_text(use_txt)))
 
     inst_md = "## Installation\n\n" + (inst_txt or "Refer to the repository README for installation instructions.") + "\n\n"
+    # Quick Start placeholder (we can't reliably synthesize runnable examples for arbitrary repos)
+    quick_start_md = (
+        "## ⚡ Quick Start\n\n"
+        "> Refer to the project's README for a minimal working example.\n\n"
+    )
     use_md = "## Usage\n\n" + (use_txt or "Refer to the repository README for usage examples.") + "\n\n"
+
+    # Project Structure (best-effort outline from file_tree when available)
+    proj_struct_md = "## 📁 Project Structure\n\n"
+    file_tree = (overview or {}).get("file_tree") if isinstance(overview, dict) else None
+    try:
+        def _render_tree(ft):
+            # ft expected as list of dicts with keys: path, type (file/dir), children
+            lines = []
+            def _walk(items, prefix=""):
+                for it in items or []:
+                    name = it.get("name") or it.get("path") or it.get("file") or it.get("module") or ""
+                    if not name:
+                        continue
+                    if it.get("type") == "dir" or it.get("is_dir"):
+                        lines.append(f"{prefix}├── {name}/")
+                        _walk(it.get("children") or [], prefix + "│   ")
+                    else:
+                        lines.append(f"{prefix}├── {name}")
+            _walk(ft if isinstance(ft, list) else [])
+            return "\n".join(lines[:200])  # cap length
+        if file_tree:
+            proj_struct_md += "```\n" + _render_tree(file_tree) + "\n```\n\n"
+        else:
+            proj_struct_md += "Structure not available.\n\n"
+    except Exception:
+        proj_struct_md += "Structure not available.\n\n"
+
+    # Core Architecture (generic explanation tuned to CCG and walkers)
+    core_arch_md = (
+        "## 🏗️ Core Architecture\n\n"
+        "This project is documented via a graph-first analysis: files, classes, functions, and modules are modeled as nodes; calls, imports, and inheritance are edges.\n\n"
+        "Walkers traverse the graph to derive insights and optionally generate diagrams.\n\n"
+    )
 
     # API Reference (formatted)
     api_md = "## API Reference (summary)\n\n"
@@ -309,11 +425,19 @@ def build_structured_markdown(
         except Exception:
             pass
 
-    # Diagrams
+    # Code Context Graph wrapper (template-aligned) + legacy Diagrams section
+    ccg_wrapper_md = "## 🕸️ Code Context Graph\n\n"
     diagrams_md = "## Diagrams\n\n"
     if include_diagrams:
         try:
             if diagrams and isinstance(diagrams, dict):
+                # As sub-sections under Code Context Graph
+                if diagrams.get("call_graph"):
+                    ccg_wrapper_md += "### Call Graph\n\n" + f"```mermaid\n{diagrams['call_graph']}\n```\n\n"
+                if diagrams.get("class_hierarchy"):
+                    ccg_wrapper_md += "### Class Hierarchy\n\n" + f"```mermaid\n{diagrams['class_hierarchy']}\n```\n\n"
+                if diagrams.get("module_graph"):
+                    ccg_wrapper_md += "### Module Dependencies\n\n" + f"```mermaid\n{diagrams['module_graph']}\n```\n\n"
                 if diagrams.get("call_graph"):
                     diagrams_md += f"```mermaid\n{diagrams['call_graph']}\n```\n\n"
                 if diagrams.get("class_hierarchy"):
@@ -324,6 +448,12 @@ def build_structured_markdown(
             diagrams_md += "Diagrams not available.\n\n"
     else:
         diagrams_md += "Diagrams disabled for this run.\n\n"
+        # If no diagrams and no ccg mermaid/context, provide a guiding note
+        try:
+            if not (diagrams and any(diagrams.get(k) for k in ("call_graph","class_hierarchy","module_graph"))) and not ccg_mermaid and not _normalize_text(ccg_context):
+                ccg_wrapper_md += "Diagrams are disabled. See Citations below for summarized relationships.\n\n"
+        except Exception:
+            pass
 
     # Citations (format ccg_context into bullets if it's a compact string)
     cites_md = "## Citations (CCG)\n\n"
@@ -338,7 +468,80 @@ def build_structured_markdown(
         cites_md += "No citations available.\n\n"
     if ccg_mermaid:
         cites_md += ccg_mermaid + "\n\n"
+    # Additional template sections (lightweight placeholders to match style)
+    usage_examples_md = "## 💡 Usage Examples\n\n" \
+        "+ See README for examples relevant to this repository.\n\n"
 
-    return title_md + overview_md + inst_md + use_md + api_md + diagrams_md + cites_md
+    configuration_md = "## ⚙️ Configuration\n\n" \
+        "+ Refer to the repository for configuration files and environment variables.\n\n"
+
+    development_md = "## 🛠️ Development\n\n" \
+        "This section is repository-specific. Use the project's preferred tooling for linting, formatting, and testing.\n\n"
+
+    testing_md = "## 🧪 Testing\n\n" \
+        "Run the repository's test suite as described in its README.\n\n"
+
+    contributing_md = "## 🤝 Contributing\n\n" \
+        "Follow the repository's contribution guidelines if available.\n\n"
+
+    # Project statistics (best-effort table)
+    proj_stats_md = "## 📊 Project Statistics\n\n"
+    try:
+        total_files = stats.get("files")
+        code_files = stats.get("code_files")
+        docs_files = stats.get("docs")
+        tests_files = stats.get("tests_files")
+        lines = ["| Metric | Value |", "|--------|-------|"]
+        if total_files is not None:
+            lines.append(f"| Total Files | {total_files} |")
+        if code_files is not None:
+            lines.append(f"| Code Files | {code_files} |")
+        if docs_files is not None:
+            lines.append(f"| Docs Files | {docs_files} |")
+        if tests_files is not None:
+            lines.append(f"| Test Files | {tests_files} |")
+        if lines and len(lines) > 2:
+            proj_stats_md += "\n".join(lines) + "\n\n"
+    except Exception:
+        pass
+
+    resources_md = "## 📚 Additional Resources\n\n" \
+        "+ Issues and discussions can be found on the repository.\n\n"
+
+    # License section when available
+    license_md = ""
+    if str(license_name).lower() != "unknown":
+        license_md = f"## License\n\nThis project is licensed under **{license_name}**. See the repository's LICENSE for details.\n\n"
+
+    acknowledgments_md = "## 🙏 Acknowledgments\n\nGenerated by Codebase Genius.\n\n"
+
+    # Compose final document respecting template-like ordering while preserving legacy headings
+    parts = [
+        title_md,
+        badges_md,
+        toc_md,
+        overview_md,
+        key_features_md,
+        inst_md,
+        use_md,
+        quick_start_md,
+        proj_struct_md,
+        core_arch_md,
+        api_md,
+        ccg_wrapper_md,
+        diagrams_md,
+        cites_md,
+        usage_examples_md,
+        configuration_md,
+        development_md,
+        testing_md,
+        contributing_md,
+        proj_stats_md,
+        resources_md,
+        license_md,
+        acknowledgments_md,
+    ]
+
+    return "".join(parts)
 
 
