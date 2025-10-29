@@ -5,3 +5,4 @@ backend/.cache/*
 outputs/
 doc/
 scripts
+tests/__pycache__
