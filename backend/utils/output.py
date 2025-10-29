@@ -16,6 +16,56 @@ def _sanitize_name(name: str) -> str:
     return name or "repo"
 
 
+
+# --- Markdown sanitation helpers ---
+
+def _normalize_text(s: str) -> str:
+    """Normalize LLM/raw text to renderable markdown.
+    - Decode JSON-escaped strings if possible
+    - Convert literal \n/\r\n to real newlines
+    - Replace \t with 4 spaces
+    - Collapse excessive blank lines
+    - Trim trailing whitespace per line
+    """
+    if not s:
+        return ""
+    t = str(s)
+    # Try JSON decode if it looks like a quoted JSON string
+    try:
+        if (t.startswith('"') and t.endswith('"')) or (t.startswith("'") and t.endswith("'")):
+            t = json.loads(t)
+    except Exception:
+        pass
+    # Normalize common escapes
+    t = t.replace("\\r\\n", "\n")
+    t = t.replace("\\n", "\n")
+    t = t.replace("\\t", "    ")
+    # Collapse 3+ newlines
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    # Trim trailing spaces
+    t = "\n".join([ln.rstrip() for ln in t.splitlines()])
+    return t.strip()
+
+
+def _strip_md_headings(s: str) -> str:
+    """Remove markdown heading lines (#, ##, ### ...) from text."""
+    if not s:
+        return ""
+    return "\n".join([ln for ln in str(s).splitlines() if not ln.lstrip().startswith('#')]).strip()
+
+
+def _dedupe_blocks(md: str) -> str:
+    """Remove duplicate paragraphs/blocks while preserving order."""
+    if not md:
+        return ""
+    seen = set()
+    out = []
+    for block in [b.strip() for b in str(md).split("\n\n") if b.strip()]:
+        if block not in seen:
+            seen.add(block)
+            out.append(block)
+    return "\n\n".join(out)
+
 def repo_name_from_url(repo_url: str) -> str:
     """Derive a filesystem-safe repository name from a URL/path.
 
@@ -129,6 +179,7 @@ def build_structured_markdown(
     ccg_mermaid: str = "",
     include_diagrams: bool = False,
     doc_overview: str = "",
+    entities: Optional[Dict] = None,
 ) -> str:
     """Compose a deterministic Markdown document with required sections.
 
@@ -144,7 +195,11 @@ def build_structured_markdown(
     title_md = f"# Documentation for {repo_url}\n\n"
 
     # Overview
-    ov_text = (doc_overview or "").strip() or "No overview generated."
+    ov_text = _normalize_text(doc_overview or "")
+    ov_text = _strip_md_headings(ov_text)
+    ov_text = _dedupe_blocks(ov_text)
+    if not ov_text:
+        ov_text = "No overview generated."
     overview_md = "## Project Overview\n\n" + ov_text + "\n\n"
 
     # Installation / Usage (extract from README sections if available)
@@ -162,6 +217,10 @@ def build_structured_markdown(
                     use_txt = content
     except Exception:
         pass
+    # Normalize and clean extracted README sections
+    inst_txt = _dedupe_blocks(_strip_md_headings(_normalize_text(inst_txt)))
+    use_txt = _dedupe_blocks(_strip_md_headings(_normalize_text(use_txt)))
+
     inst_md = "## Installation\n\n" + (inst_txt or "Refer to the repository README for installation instructions.") + "\n\n"
     use_md = "## Usage\n\n" + (use_txt or "Refer to the repository README for usage examples.") + "\n\n"
 
@@ -210,6 +269,46 @@ def build_structured_markdown(
             api_md += "- Top files by lines:\n" + "\n".join([f"  - {it}" for it in items]) + "\n"
     api_md += "\n"
 
+    # Detailed API (inferred) using entities if available
+    if entities and isinstance(entities, dict):
+        try:
+            details_added = 0
+            lines_buf = []
+            for fe in entities.get("files", []):
+                mod = fe.get("module") or fe.get("file", "")
+                fds = fe.get("functions_detail", [])
+                cds = fe.get("classes_detail", [])
+                if not fds and not cds:
+                    continue
+                if mod:
+                    lines_buf.append(f"- Module: {mod}")
+                for cd in cds:
+                    name = str(cd.get("name", ""))
+                    d = str(cd.get("doc", "")).strip()
+                    first = d.split("\n")[0] if d else ""
+                    lines_buf.append(f"  - Class: {name}" + (f" — {first}" if first else ""))
+                    details_added += 1
+                    if details_added >= 20:
+                        break
+                if details_added >= 20:
+                    break
+                for fd in fds:
+                    name = str(fd.get("name",""))
+                    params = fd.get("params", [])
+                    params_str = ", ".join(params) if isinstance(params, list) else str(params)
+                    d = str(fd.get("doc","")).strip()
+                    first = d.split("\n")[0] if d else ""
+                    lines_buf.append(f"  - Function: {name}({params_str})" + (f" — {first}" if first else ""))
+                    details_added += 1
+                    if details_added >= 20:
+                        break
+                if details_added >= 20:
+                    break
+            if lines_buf:
+                api_md += "### Detailed API (inferred)\n" + "\n".join(lines_buf) + "\n\n"
+        except Exception:
+            pass
+
     # Diagrams
     diagrams_md = "## Diagrams\n\n"
     if include_diagrams:
@@ -228,16 +327,15 @@ def build_structured_markdown(
 
     # Citations (format ccg_context into bullets if it's a compact string)
     cites_md = "## Citations (CCG)\n\n"
-    if ccg_context:
-        text = str(ccg_context)
+    ctx = _normalize_text(ccg_context or "")
+    if ctx:
         # If context already contains bullets, use as-is
-        if "\n- " in text or text.strip().startswith("-"):
-            cites_md += text + "\n\n"
+        if "\n- " in ctx or ctx.strip().startswith("-"):
+            cites_md += ctx + "\n\n"
         else:
-            # Split into sections by prefixes 'Funcs:', 'Classes:', 'Modules:'
-            parts = [p.strip() for p in text.split("Classes:")]
-            # Fallback: just add raw text
-            cites_md += text + "\n\n"
+            cites_md += ctx + "\n\n"
+    elif not ccg_mermaid:
+        cites_md += "No citations available.\n\n"
     if ccg_mermaid:
         cites_md += ccg_mermaid + "\n\n"
 

@@ -54,6 +54,41 @@ def _naive_extract_python(path: Path) -> Dict[str, Any]:
     imports: List[Dict[str, Any]] = []
     calls: List[Dict[str, Any]] = []
 
+
+    # Capture richer details for API docs
+    functions_detail: List[Dict[str, Any]] = []
+    classes_detail: List[Dict[str, Any]] = []
+
+    def _peek_docstring(start_idx: int) -> str:
+        """Return a triple-quoted docstring starting at or after start_idx (1-based)."""
+        j = start_idx
+        n = len(lines)
+        while 1 <= j <= n:
+            ln = lines[j - 1]
+            if ln.strip() == "":
+                j += 1
+                continue
+            s = ln.lstrip()
+            if s.startswith('"""') or s.startswith("'''"):
+                q = '"""' if s.startswith('"""') else "'''"
+                body = s[len(q):]
+                if q in body:
+                    return body.split(q)[0].strip()
+                # multi-line docstring
+                k = j + 1
+                parts = [body]
+                while 1 <= k <= n:
+                    ln2 = lines[k - 1]
+                    if q in ln2:
+                        parts.append(ln2.split(q)[0])
+                        break
+                    parts.append(ln2)
+                    k += 1
+                return "\n".join(parts).strip()
+            # first non-empty is not a docstring
+            break
+        return ""
+
     # Track current function by indentation
     current_func = None
     current_indent = 0
@@ -67,6 +102,12 @@ def _naive_extract_python(path: Path) -> Dict[str, Any]:
             if bases_raw:
                 for base in [b.strip().split('.')[-1] for b in bases_raw.split(',') if b.strip()]:
                     inherits.append({"class": cls_name, "base": base, "line": idx})
+            # Capture class docstring if present
+            try:
+                cdoc = _peek_docstring(idx + 1)
+            except Exception:
+                cdoc = ""
+            classes_detail.append({"name": cls_name, "doc": cdoc})
             # Reset current func when encountering class at same indent level
             # (We do not track class context for methods here)
 
@@ -74,6 +115,32 @@ def _naive_extract_python(path: Path) -> Dict[str, Any]:
         if m_fun:
             fname = m_fun.group(1)
             functions.append(fname)
+            # Parse params
+            params: List[str] = []
+            try:
+                after = line.split(fname, 1)[1]
+                pseg = after[after.find("(")+1:]
+                pseg = pseg.split(")")[0]
+                for token in [t.strip() for t in pseg.split(",") if t.strip()]:
+                    nm = token
+                    if ":" in nm:
+                        nm = nm.split(":", 1)[0].strip()
+                    if "=" in nm:
+                        nm = nm.split("=", 1)[0].strip()
+                    nm = nm.lstrip("*")
+                    nm = nm.lstrip("*")
+                    if nm:
+                        params.append(nm)
+            except Exception:
+                params = []
+            m_ret = re.search(r"->\s*([^:]+)", line)
+            returns = m_ret.group(1).strip() if m_ret else ""
+            # Docstring
+            try:
+                fdoc = _peek_docstring(idx + 1)
+            except Exception:
+                fdoc = ""
+            functions_detail.append({"name": fname, "params": params, "returns": returns, "doc": fdoc})
             current_func = fname
             current_indent = len(line) - len(line.lstrip(' '))
             continue
@@ -122,6 +189,8 @@ def _naive_extract_python(path: Path) -> Dict[str, Any]:
         "inherits": inherits,
         "imports": imports,
         "calls": calls,
+        "functions_detail": functions_detail,
+        "classes_detail": classes_detail,
     }
 
 

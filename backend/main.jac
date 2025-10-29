@@ -8,7 +8,7 @@ import from agents.CodeAnalyzer { ccg_get_callers, ccg_get_callees, ccg_get_subc
 
 import from graph.builders { build_repo_graph, collect_stats_from_repo, doc_collect, StatsCollector, DocCollector }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
-import from utils.output { save_results_to_disk }
+import from utils.output { save_results_to_disk, build_structured_markdown }
 import from utils.cache { get_cache }
 
 
@@ -448,7 +448,7 @@ walker generate_docs {
         # Generate documentation overview (stub or LLM)
         doc_overview = "";
         if self.use_llm {
-            prompt = f"Generate high-level documentation for repo: {self.repo_url}. Depth: {self.depth}. " + extra_context + f" TopFilesByLines: [{top_files_str}]. API: {api_surface}.";
+            prompt = f"Write a clean markdown overview (no top-level headings) for {self.repo_url}. Audience: newcomers. Focus: purpose, key modules, and how to get started. Avoid duplicates and raw escape sequences. Context: depth={self.depth} " + extra_context + f" TopFiles=[{top_files_str}] API={api_surface}.";
             doc_overview = docgen_summarize(self.repo_url, self.depth, prompt);
         } else {
             doc_overview = f"[Overview] Documentation for {self.repo_url} (depth={self.depth}, diagrams={self.include_diagrams})";
@@ -508,66 +508,20 @@ walker generate_docs {
 
         }
 
-        # Compose structured Markdown documentation with required sections
-        title_md = "# Documentation for " + self.repo_url + "\n\n";
-        overview_md = "## Project Overview\n\n";
-        ov_text = doc_overview;
-        if ov_text == "" { ov_text = "No overview generated."; }
-        overview_md += ov_text + "\n\n";
-
-        # Installation and Usage from README (best-effort)
-        inst_txt = ""; use_txt = "";
-        try {
-            if ("readme" in overview) {
-                rd = overview["readme"];
-                if ("sections" in rd) {
-                    for sec in rd["sections"] {
-                        t = ""; try { t = sec["title"].lower(); } except Exception as e { t = ""; }
-                        if (inst_txt == "") and ("install" in t) { try { inst_txt = sec["content"]; } except Exception as e { inst_txt = ""; } }
-                        if (use_txt == "") and (("usage" in t) or ("use" in t) or ("run" in t) or ("quick start" in t)) { try { use_txt = sec["content"]; } except Exception as e { use_txt = ""; } }
-                    }
-                }
-            }
-        } except Exception as e { inst_txt = inst_txt; use_txt = use_txt; }
-        inst_md = "## Installation\n\n" + (inst_txt if (inst_txt != "") else "Refer to the repository README for installation instructions.") + "\n\n";
-        use_md = "## Usage\n\n" + (use_txt if (use_txt != "") else "Refer to the repository README for usage examples.") + "\n\n";
-
-        # API Reference summary (formatted)
-        api_md = "## API Reference (summary)\n\n";
-        # Classes
-        if api_classes_md != "" { api_md += "- Classes (top selection):\n" + api_classes_md; }
-        # Totals
-        if funcs_total_num != 0 { api_md += f"- Total functions: {funcs_total_num}\n"; }
-        # CCG counts
-        try {
-            api_md += "- CCG counts:\n";
-            api_md += f"  - calls: {ccg['calls']}\n";
-            api_md += f"  - inherits: {ccg['inherits']}\n";
-            api_md += f"  - imports: {ccg['imports']}\n";
-        } except Exception as e { }
-        # Top files by lines
-        if top_files_md != "" { api_md += "- Top files by lines:\n" + top_files_md; }
-        api_md += "\n";
-
-        # Diagrams (embed Mermaid when available)
-        diagrams_md = "## Diagrams\n\n";
-        if self.include_diagrams {
-            try {
-                if ("call_graph" in diagrams) { diagrams_md += f"```mermaid\n{diagrams['call_graph']}\n```\n\n"; }
-                if ("class_hierarchy" in diagrams) { diagrams_md += f"```mermaid\n{diagrams['class_hierarchy']}\n```\n\n"; }
-                if ("module_graph" in diagrams) { diagrams_md += f"```mermaid\n{diagrams['module_graph']}\n```\n\n"; }
-            } except Exception as e { diagrams_md += "Diagrams not available.\n\n"; }
-        } else {
-            diagrams_md += "Diagrams disabled for this run.\n\n";
-        }
-
-        # Citations from CCG summaries
-        cites_md = "## Citations (CCG)\n\n";
-        if ccg_context != "" { cites_md += ccg_context + "\n\n"; }
-        if ccg_mermaid != "" { cites_md += ccg_mermaid + "\n\n"; }
-
-        # Final document
-        doc = title_md + overview_md + inst_md + use_md + api_md + diagrams_md + cites_md;
+        # Compose structured Markdown documentation with required sections (centralized builder)
+        doc = build_structured_markdown(
+            self.repo_url,
+            overview,
+            api_surface,
+            ccg,
+            top_files_str,
+            diagrams,
+            ccg_context,
+            ccg_mermaid,
+            self.include_diagrams,
+            doc_overview,
+            entities,
+        );
 
         # Save to disk if enabled
         saved_paths = {};
