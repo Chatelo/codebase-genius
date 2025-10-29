@@ -6,7 +6,7 @@ import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
 import from agents.CodeAnalyzer { ccg_get_callers, ccg_get_callees, ccg_get_subclasses, ccg_get_dependencies }
 
-import from graph.builders { build_repo_graph, collect_stats_from_repo, doc_collect }
+import from graph.builders { build_repo_graph, collect_stats_from_repo, doc_collect, StatsCollector, DocCollector }
 import from utils.diagram_gen { make_call_graph_mermaid, make_class_hierarchy_mermaid, make_module_graph_mermaid }
 import from utils.output { save_results_to_disk }
 import from utils.cache { get_cache }
@@ -819,7 +819,10 @@ walker api_graph_stats {
         try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
         st = {}; err = gerr;
         if _repo_node != None {
-            try { st = collect_stats_from_repo(_repo_node, self.top_n); } except Exception as e { err = str(e); st = {}; }
+            # Use declarative graph traversal walker
+            try {
+                st = StatsCollector(top_n=self.top_n) spawn _repo_node;
+            } except Exception as e { err = str(e); st = {}; }
         }
         report {"status": "success", "repo_url": self.repo_url, "stats": st, "error": err};
     }
@@ -841,7 +844,10 @@ walker api_graph_docs {
         try { _repo_node = build_repo_graph(here, self.repo_url, ft, ents); } except Exception as e { _repo_node = None; gerr = str(e); }
         docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; err = gerr;
         if _repo_node != None {
-            try { docd = doc_collect(_repo_node, ents, self.top_n); } except Exception as e { err = str(e); docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; }
+            # Use declarative graph traversal walker
+            try {
+                docd = DocCollector(top_n=self.top_n) spawn _repo_node;
+            } except Exception as e { err = str(e); docd = {"top_files": [], "top_files_by_size": [], "api_classes": [], "total_functions": 0}; }
         }
         report {"status": "success", "repo_url": self.repo_url, "docs": docd, "error": err};
     }

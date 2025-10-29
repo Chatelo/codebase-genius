@@ -648,44 +648,29 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
 }
 
 
-#* StatsCollector: Traverses the graph and computes statistics *#
+#* StatsCollector: Computes statistics from Repository node *#
 walker StatsCollector {
+    has top_n: int = 10;
     has stats: dict = {};
 
     can collect with Repository entry {
-        # Compute stats using repository.file_tree and CCG caches
-        visitor.stats = collect_stats_from_repo(here, 10);
-        # Persist on repo node for reuse
-        try { here.stats = visitor.stats; } except Exception as e { }
+        # Use existing helper function to collect stats from file_tree
+        ft = []; try { if ("file_tree" in here) { ft = here.file_tree; } } except Exception as e { ft = []; }
+        visitor.stats = collect_stats_from_repo(here, ft, visitor.top_n);
 
         report visitor.stats;
     }
 }
 
-#* DocCollector: Traverses the graph and collects documentation-relevant data *#
+#* DocCollector: Collects documentation-relevant data from Repository node *#
 walker DocCollector {
     has top_n: int = 10;
-    has top_files: list = [];
-    has top_files_by_size: list = [];
-    has api_classes: list = [];
-    has total_functions: int = 0;
 
     can collect with Repository entry {
-        # Compute documentation-relevant aggregates from repo + entities snapshot
-        ents = {};
-        try { if ("entities" in here) { ents = here.entities; } } except Exception as e { ents = {}; }
-        # Note: entities are not stored on repo by default; callers can pass via endpoint
-        visitor.top_files = [];
-        visitor.api_classes = [];
-        visitor.total_functions = 0;
-        res = doc_collect(here, ents, visitor.top_n);
-        try {
-            if ("top_files" in res) { visitor.top_files = res["top_files"]; }
-            if ("top_files_by_size" in res) { visitor.top_files_by_size = res["top_files_by_size"]; }
-            if ("api_classes" in res) { visitor.api_classes = res["api_classes"]; }
-            if ("total_functions" in res) { visitor.total_functions = res["total_functions"]; }
-        } except Exception as e { }
-        report {"top_files": visitor.top_files, "top_files_by_size": visitor.top_files_by_size, "api_classes": visitor.api_classes, "total_functions": visitor.total_functions};
+        # Use existing helper function to collect documentation data from file_tree
+        ft = []; try { if ("file_tree" in here) { ft = here.file_tree; } } except Exception as e { ft = []; }
+        result = doc_collect(ft, visitor.top_n);
+        report result;
     }
 }
 
