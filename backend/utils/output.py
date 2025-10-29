@@ -230,7 +230,8 @@ def build_structured_markdown(
         "- [Overview](#project-overview)\n"
         "- [Key Features](#key-features)\n"
         "- [Installation](#installation)\n"
-            "- [Getting Started](#getting-started)\n"
+        "- [Usage](#usage)\n"
+        "- [Getting Started](#getting-started)\n"
         "- [Project Structure](#project-structure)\n"
         "- [Core Architecture](#core-architecture)\n"
         "- [API Reference](#api-reference-summary)\n"
@@ -463,22 +464,46 @@ def build_structured_markdown(
     # Code Context Graph wrapper (template-aligned) + legacy Diagrams section
     ccg_wrapper_md = "## 🕸️ Code Context Graph\n\n"
     diagrams_md = "## Diagrams\n\n"
+
+    def _is_empty_mermaid(s: str) -> bool:
+        try:
+            t = (s or "").strip()
+            # Consider empty if no edges/arrows or only header line
+            if ("-->" not in t) and ("---" not in t) and ("-.->" not in t) and ("--x" not in t):
+                # Also ignore trivial single-line like 'flowchart LR'
+                return len([ln for ln in t.splitlines() if ln.strip()]) <= 1
+            return False
+        except Exception:
+            return False
+
     if include_diagrams:
         try:
             if diagrams and isinstance(diagrams, dict):
-                # As sub-sections under Code Context Graph
+                # As sub-sections under Code Context Graph (primary home for diagrams)
                 if diagrams.get("call_graph"):
-                    ccg_wrapper_md += "### Call Graph\n\n" + f"```mermaid\n{diagrams['call_graph']}\n```\n\n"
+                    cc = diagrams["call_graph"]
+                    ccg_wrapper_md += "### Call Graph\n\n"
+                    if _is_empty_mermaid(cc):
+                        ccg_wrapper_md += "No call graph data available.\n\n"
+                    else:
+                        ccg_wrapper_md += f"```mermaid\n{cc}\n```\n\n"
                 if diagrams.get("class_hierarchy"):
-                    ccg_wrapper_md += "### Class Hierarchy\n\n" + f"```mermaid\n{diagrams['class_hierarchy']}\n```\n\n"
+                    ch = diagrams["class_hierarchy"]
+                    ccg_wrapper_md += "### Class Hierarchy\n\n"
+                    if _is_empty_mermaid(ch):
+                        ccg_wrapper_md += "No class hierarchy data available.\n\n"
+                    else:
+                        ccg_wrapper_md += f"```mermaid\n{ch}\n```\n\n"
                 if diagrams.get("module_graph"):
-                    ccg_wrapper_md += "### Module Dependencies\n\n" + f"```mermaid\n{diagrams['module_graph']}\n```\n\n"
-                if diagrams.get("call_graph"):
-                    diagrams_md += f"```mermaid\n{diagrams['call_graph']}\n```\n\n"
-                if diagrams.get("class_hierarchy"):
-                    diagrams_md += f"```mermaid\n{diagrams['class_hierarchy']}\n```\n\n"
-                if diagrams.get("module_graph"):
-                    diagrams_md += f"```mermaid\n{diagrams['module_graph']}\n```\n\n"
+                    mg = diagrams["module_graph"]
+                    ccg_wrapper_md += "### Module Dependencies\n\n"
+                    if _is_empty_mermaid(mg):
+                        ccg_wrapper_md += "No module dependency data available.\n\n"
+                    else:
+                        ccg_wrapper_md += f"```mermaid\n{mg}\n```\n\n"
+
+                # Avoid duplicating diagrams; keep Diagrams section as a pointer
+                diagrams_md += "See Code Context Graph section above for diagrams.\n\n"
         except Exception:
             diagrams_md += "Diagrams not available.\n\n"
     else:
