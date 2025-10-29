@@ -16,7 +16,7 @@ glob llm = Model(model_name="gpt-4o-mini");
 
 
 # Shared small helpers for ordered inserts (desc)
-def __insort_desc(lst: list, entry: dict, key: str) -> None {
+def _insort_desc(lst: list, entry: dict, key: str) -> None {
     inserted = False; i = 0;
     while i < len(lst) {
         cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
@@ -26,7 +26,7 @@ def __insort_desc(lst: list, entry: dict, key: str) -> None {
     if not inserted { lst.append(entry); }
 }
 
-def __insort_desc2(lst: list, entry: dict, key1: str, key2: str) -> None {
+def _insort_desc2(lst: list, entry: dict, key1: str, key2: str) -> None {
     inserted = False; i = 0;
     while i < len(lst) {
         a1 = entry.get(key1, 0); b1 = 0; try { if (key1 in lst[i]) { b1 = lst[i][key1]; } } except Exception as e { b1 = 0; }
@@ -270,7 +270,7 @@ walker generate_docs {
                 ranked_funcs = [];
                 for k in fin {
                     entry = {"name": k, "count": fin[k]};
-                    __insort_desc(ranked_funcs, entry, "count");
+                    _insort_desc(ranked_funcs, entry, "count");
                 }
 
                 # Build callers/callees summary for top 3 functions
@@ -327,7 +327,7 @@ walker generate_docs {
                     subs = []; try { subs = ccg_get_subclasses(_repo_node, cn2); } except Exception as e { subs = []; }
                     cnt = 0; for s in subs { cnt += 1; }
                     entry2 = {"name": cn2, "count": cnt};
-                    __insort_desc(cls_counts, entry2, "count");
+                    _insort_desc(cls_counts, entry2, "count");
                 }
                 classes_summary = ""; k2 = 0;
                 for cc in cls_counts {
@@ -357,7 +357,7 @@ walker generate_docs {
                     deps = []; try { deps = ccg_get_dependencies(_repo_node, mn2); } except Exception as e { deps = []; }
                     mc = 0; for d in deps { mc += 1; }
                     entry3 = {"name": mn2, "count": mc};
-                    __insort_desc(mod_counts, entry3, "count");
+                    _insort_desc(mod_counts, entry3, "count");
                 }
                 mods_summary = ""; k3 = 0;
                 for md in mod_counts {
@@ -772,7 +772,7 @@ walker api_ccg_overview {
             funcs = [];
             for k in fin {
                 entry = {"name": k, "count": fin[k]};
-                __insort_desc(funcs, entry, "count");
+                _insort_desc(funcs, entry, "count");
             }
             # top classes by subclasses
             classes_all = []; try { if ("files" in ents) { for f in ents["files"] { if ("classes" in f) { for cn in f["classes"] { dup=False; j=0; while j < len(classes_all) { if classes_all[j]==cn { dup=True; break; } j+=1; } if not dup { classes_all.append(cn); } } } } } } except Exception as e { classes_all = []; }
@@ -781,7 +781,7 @@ walker api_ccg_overview {
                 subs = []; try { subs = ccg_get_subclasses(_repo_node, cn); } except Exception as e { subs = []; }
                 cnt = 0; for s in subs { cnt += 1; }
                 en = {"name": cn, "count": cnt};
-                __insort_desc(cls_counts, en, "count");
+                _insort_desc(cls_counts, en, "count");
             }
             # top modules by dependencies
             mods_all = []; try { if ("files" in ents) { for f in ents["files"] { if ("module" in f) { mn=f["module"]; if mn!="" { dupm=False; q=0; while q < len(mods_all) { if mods_all[q]==mn { dupm=True; break; } q+=1; } if not dupm { mods_all.append(mn); } } } } } } except Exception as e { mods_all = []; }
@@ -790,7 +790,7 @@ walker api_ccg_overview {
                 deps = []; try { deps = ccg_get_dependencies(_repo_node, mn); } except Exception as e { deps = []; }
                 mc = 0; for d in deps { mc += 1; }
                 em = {"name": mn, "count": mc};
-                __insort_desc(mod_counts, em, "count");
+                _insort_desc(mod_counts, em, "count");
             }
             # trim
             t = self.top_n; if t < 1 { t = 5; }

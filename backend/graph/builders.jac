@@ -483,7 +483,7 @@ walker EdgeBuilder {
 
 # Small helpers to keep ordering logic declarative and DRY
 # Insert entry into lst so that lst stays sorted by key (descending)
-def __insort_desc(lst: list, entry: dict, key: str) -> None {
+def _insort_desc(lst: list, entry: dict, key: str) -> None {
     inserted = False; i = 0;
     while i < len(lst) {
         cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
@@ -503,9 +503,9 @@ def compute_top_files(file_tree: list, top_n: int = 10) -> dict {
             entry = {"path": p, "lines": ln};
             try { if ("size" in item) { entry["size"] = item["size"]; } } except Exception as e { }
             try { if ("language" in item) { entry["language"] = item["language"]; } } except Exception as e { }
-            __insort_desc(top_lines, entry, "lines");
+            _insort_desc(top_lines, entry, "lines");
             if len(top_lines) > top_n { top_lines.pop(); }
-            __insort_desc(top_size, entry, "size");
+            _insort_desc(top_size, entry, "size");
             if len(top_size) > top_n { top_size.pop(); }
         }
     }
@@ -562,13 +562,13 @@ def collect_stats_from_repo(repo: Repository, top_n: int = 10) -> dict {
             # Track top N by size for code files
             if ("size" in item) {
                 sz = item["size"];
-                __insort_desc(top_size, {"path": p, "size": sz}, "size");
+                _insort_desc(top_size, {"path": p, "size": sz}, "size");
                 if len(top_size) > top_n { top_size.pop(); }
             }
             # Track top N by lines for code files if provided
             if ("lines" in item) {
                 ln = item["lines"];
-                __insort_desc(top_lines, {"path": p, "lines": ln}, "lines");
+                _insort_desc(top_lines, {"path": p, "lines": ln}, "lines");
                 if len(top_lines) > top_n { top_lines.pop(); }
             }
         } elif ("type" in item) and item["type"] == "Doc" {

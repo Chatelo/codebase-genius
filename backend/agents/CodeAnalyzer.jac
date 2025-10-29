@@ -84,7 +84,7 @@ def analyze_files(repo_path: str, items: list, parallel: bool = True) -> dict {
 
 
 # Small helper to maintain descending order by key
-def __insort_desc(lst: list, entry: dict, key: str) -> None {
+def _insort_desc(lst: list, entry: dict, key: str) -> None {
     inserted = False; i = 0;
     while i < len(lst) {
         cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
@@ -138,13 +138,13 @@ def basic_stats(file_tree: list, top_n: int = 10) -> dict {
             # Track top N by size for code files
             if ("size" in item) {
                 sz = item["size"];
-                __insort_desc(top_size, {"path": p, "size": sz}, "size");
+                _insort_desc(top_size, {"path": p, "size": sz}, "size");
                 if len(top_size) > top_n { top_size.pop(); }
             }
             # Track top N by lines for code files if provided
             if ("lines" in item) {
                 ln = item["lines"];
-                __insort_desc(top_lines, {"path": p, "lines": ln}, "lines");
+                _insort_desc(top_lines, {"path": p, "lines": ln}, "lines");
                 if len(top_lines) > top_n { top_lines.pop(); }
             }
         } elif ("type" in item) and item["type"] == "Doc" {

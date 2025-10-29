@@ -69,7 +69,7 @@ def _score_entry_point(path: str) -> int {
 
 # Local helpers to keep ordering declarative and reusable
 # Primary desc, optional secondary desc for tie-breaks
-def __insort_desc(lst: list, entry: dict, key: str) -> None {
+def _insort_desc(lst: list, entry: dict, key: str) -> None {
     inserted = False; i = 0;
     while i < len(lst) {
         cur = 0; try { if (key in lst[i]) { cur = lst[i][key]; } } except Exception as e { cur = 0; }
@@ -79,7 +79,7 @@ def __insort_desc(lst: list, entry: dict, key: str) -> None {
     if not inserted { lst.append(entry); }
 }
 
-def __insort_desc2(lst: list, entry: dict, key1: str, key2: str) -> None {
+def _insort_desc2(lst: list, entry: dict, key1: str, key2: str) -> None {
     inserted = False; i = 0;
     while i < len(lst) {
         a1 = entry.get(key1, 0); b1 = 0; try { if (key1 in lst[i]) { b1 = lst[i][key1]; } } except Exception as e { b1 = 0; }
@@ -115,7 +115,7 @@ def _prioritize_entry_points(file_tree: list, top_n: int = 10) -> dict {
 
     # Sort candidates by score desc, then lines desc
     ranked = [];
-    for c in candidates { __insort_desc2(ranked, c, "score", "lines"); }
+    for c in candidates { _insort_desc2(ranked, c, "score", "lines"); }
 
     # Truncate to top N entry points
     entry_points = [];
@@ -143,7 +143,7 @@ def _prioritize_entry_points(file_tree: list, top_n: int = 10) -> dict {
     }
     # Sort rest by lines desc
     rest_sorted = [];
-    for r2 in rest { __insort_desc(rest_sorted, r2, "lines"); }
+    for r2 in rest { _insort_desc(rest_sorted, r2, "lines"); }
 
     analysis_order = [];
     for e2 in entry_points { analysis_order.append(e2["path"]); }
@@ -293,7 +293,7 @@ def _iterative_scheduler(file_tree: list, entities: dict, plan: dict, max_iters:
         ranked = [];
         for p3 in cands {
             entry = {"path": p3, "score": metrics[p3]["score"], "lines": lines_by_path.get(p3, 0)};
-            __insort_desc2(ranked, entry, "score", "lines");
+            _insort_desc2(ranked, entry, "score", "lines");
         }
         # Pick batch
         batch = [];
