@@ -179,29 +179,48 @@ from api_client_graph import call_graph_stats, call_graph_docs
 
 
 def build_micro_mermaid_function(func_name: str, callers: List[Dict[str, Any]], callees: List[Dict[str, Any]], max_nodes: int = 5) -> str:
+    """Build a tiny, safe Mermaid graph around a function with callers/callees.
+
+    Uses bracketed labels and sanitized ids so that Mermaid reliably renders.
+    """
     try:
-        c_names = []
+        def safe_id(label: str) -> str:
+            s = str(label)
+            out = []
+            for ch in s:
+                out.append(ch if ch.isalnum() else "_")
+            ident = "".join(out).strip("_") or "n"
+            if ident[0].isdigit():
+                ident = f"n_{ident}"
+            return ident
+
+        c_names: List[str] = []
         for c in callers:
             nm = c.get("name") if isinstance(c, dict) else None
             if nm and nm not in c_names:
                 c_names.append(nm)
             if len(c_names) >= max_nodes:
                 break
-        d_names = []
+        d_names: List[str] = []
         for c in callees:
             nm = c.get("name") if isinstance(c, dict) else None
             if nm and nm not in d_names:
                 d_names.append(nm)
             if len(d_names) >= max_nodes:
                 break
-        edges = []
+
+        center_id = safe_id(func_name)
+        parts: List[str] = ["flowchart LR"]
+        # Define center node implicitly via first edge
         for nm in c_names:
-            edges.append(f"{nm}-->{func_name};")
+            left_id = safe_id(nm)
+            parts.append(f"  {left_id}[\"{nm}\"] --> {center_id}[\"{func_name}\"]")
         for nm in d_names:
-            edges.append(f"{func_name}-->{nm};")
-        if not edges:
+            right_id = safe_id(nm)
+            parts.append(f"  {center_id}[\"{func_name}\"] --> {right_id}[\"{nm}\"]")
+        if len(parts) <= 1:
             return ""
-        return "graph LR; " + " ".join(edges)
+        return "\n".join(parts)
     except Exception:
         return ""
 

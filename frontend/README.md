@@ -200,6 +200,24 @@ Or:
 pip install -r requirements.txt
 ```
 
+## Mermaid Diagrams: Where to Install What?
+
+This project splits diagram responsibilities:
+
+- Backend (Jac/Python) generates Mermaid source strings (.mmd). It does NOT render them and does not need Mermaid installed.
+- Frontend (Streamlit) renders the diagrams client‑side using Mermaid.js loaded in the browser.
+
+What this means for setup:
+
+- You do not need any Mermaid library on the backend. Keep backend lightweight and only output valid Mermaid text.
+- The Streamlit app already embeds Mermaid.js via a CDN inside an HTML component, so no extra Python package is required to see diagrams.
+- Optional: If you prefer a packaged component, you can use a library like `streamlit-mermaid`. In that case, add it to `frontend/requirements.txt` and switch rendering to the component.
+
+Common rendering issues and fixes:
+
+- If diagrams show as raw text, ensure the Mermaid syntax is valid. We use bracketed labels and sanitized node IDs, which Mermaid expects: `flowchart LR` followed by edges such as `A["label"] --> B["label"]`.
+- Some node names include dots/spaces; these must NOT be used as raw IDs. The app sanitizes node IDs and keeps the human‑readable label in brackets to render correctly.
+
 ## Dependencies
 
 - **streamlit** (1.39.0): Web UI framework
