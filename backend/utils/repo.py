@@ -75,9 +75,7 @@ def _clone_via_cli(repo_url: str, target: Path, timeout_s: int) -> None:
         # Fallback: older git may not support filter=blob:none
         if "filter=blob:none" in stderr or "unknown option" in stderr:
             try:
-                cmd_fb = [
-                    "git", "clone", "--depth=1", "--no-tags", "--single-branch", "--", repo_url, str(target)
-                ]
+                cmd_fb = ["git", "clone", "--depth=1", "--no-tags", "--single-branch", "--", repo_url, str(target)]
                 subprocess.run(cmd_fb, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout_s, env=env)
                 return
             except subprocess.TimeoutExpired:

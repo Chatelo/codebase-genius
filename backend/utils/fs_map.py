@@ -1,7 +1,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 
 _CODE_EXTS = {
     ".py": "python",
@@ -48,6 +48,25 @@ EXCLUDE_DIRS = {
     "target",
 }
 
+# Default glob-style patterns to skip common generated/binary files
+DEFAULT_EXCLUDE_GLOBS = {
+    "**/*.min.js",
+    "**/*.min.css",
+    "**/*.dll",
+    "**/*.exe",
+    "**/*.so",
+    "**/*.o",
+    "**/*.class",
+    "**/dist/**",
+    "**/build/**",
+    "**/node_modules/**",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.gif",
+    "**/*.jar",
+}
+
 
 
 def _classify(path: Path) -> Dict:
@@ -74,6 +93,25 @@ def _count_lines_fast(path: Path, max_bytes: int) -> int:
         return 0
 
 
+def _is_binary_file(path: Path, max_bytes: int = 4096) -> bool:
+    """Heuristic to detect binary files: check for NUL bytes or a high ratio of non-text bytes."""
+    try:
+        with open(path, "rb") as f:
+            chunk = f.read(max_bytes)
+        if not chunk:
+            return False
+        if b"\x00" in chunk:
+            return True
+        # Count bytes outside common printable ranges
+        nontext = sum(1 for b in chunk if b > 0x7F and b != 0x09 and b != 0x0A and b != 0x0D)
+        if (nontext / max(1, len(chunk))) > 0.3:
+            return True
+        return False
+    except Exception:
+        # If we can't read file, assume not binary to avoid false positives
+        return False
+
+
 def scan_repo_tree(
     root_path: str,
     exclude_dirs: Optional[List[str]] = None,
@@ -85,6 +123,9 @@ def scan_repo_tree(
     max_file_size_bytes: Optional[int] = None,
     compute_line_counts: bool = True,
     max_line_count_bytes: Optional[int] = DEFAULT_MAX_LINECOUNT_BYTES,
+    follow_symlinks: bool = False,
+    batch_size: int = 0,
+    on_batch: Optional[Callable[[List[Dict]], None]] = None,
 ) -> List[Dict]:
     root = Path(root_path).resolve()
     out: List[Dict] = []
@@ -102,11 +143,25 @@ def scan_repo_tree(
     if include_paths:
         include_paths_norm = [p if p.endswith("/") else f"{p}/" for p in (s.replace("\\", "/") for s in include_paths)]
 
-    for dirpath, dirnames, filenames in os.walk(root, topdown=True):
+    # Merge exclude globs with defaults
+    final_exclude_globs = set(DEFAULT_EXCLUDE_GLOBS)
+    if exclude_globs:
+        final_exclude_globs.update(exclude_globs)
+
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=follow_symlinks):
         # Exclude common non-source directories (by directory name)
         dirnames[:] = [d for d in dirnames if d not in final_excludes]
         for fname in filenames:
             p = Path(dirpath) / fname
+            # mark symlink and skip dangling
+            if p.is_symlink():
+                try:
+                    # If symlink points to directory and follow_symlinks False, skip
+                    if not follow_symlinks and p.resolve(strict=False).is_dir():
+                        continue
+                except Exception:
+                    # Dangling symlink: skip
+                    continue
             try:
                 rel = p.relative_to(root)
             except Exception:
@@ -150,6 +205,18 @@ def scan_repo_tree(
                 if excluded:
                     continue
 
+            # Also apply default exclude globs (e.g. generated binaries)
+            excluded_default = False
+            for pat in final_exclude_globs:
+                try:
+                    if rel.match(pat):
+                        excluded_default = True
+                        break
+                except Exception:
+                    pass
+            if excluded_default:
+                continue
+
             # Stat size (skip files over limit if configured)
             try:
                 size = p.stat().st_size
@@ -159,7 +226,12 @@ def scan_repo_tree(
             if max_file_size_bytes and size > max_file_size_bytes:
                 continue
 
+            # Binary file detection: skip obvious binaries unless the extension is recognized as source
+            is_bin = _is_binary_file(p)
+
             meta = _classify(rel)
+            meta["is_symlink"] = bool(p.is_symlink())
+            meta["is_binary"] = bool(is_bin)
             meta["size"] = int(size)
 
             # Optionally compute approximate line count for code files only
@@ -171,10 +243,35 @@ def scan_repo_tree(
                     print(f"[scan_repo_tree] Could not count lines for {rel}: {e}")
                     meta["lines"] = 0
 
+            # If the file looks binary and isn't a recognized code extension, skip adding detailed metadata
+            if meta.get("is_binary") and meta.get("language") not in {"jaclang", "python", "javascript", "typescript", "rust", "go", "java", "c", "cpp", "csharp", "ruby", "php"}:
+                # add minimal metadata so callers know it was skipped
+                meta["type"] = "Binary"
+
             out.append(meta)
 
+            # If streaming via callback is requested, flush batches to reduce memory
+            if batch_size and on_batch and len(out) >= batch_size:
+                try:
+                    on_batch(out[:])
+                except Exception:
+                    # Do not fail the full scan because callback misbehaves
+                    pass
+                # clear collected entries to keep memory low
+                out.clear()
+
             if max_files and len(out) >= max_files:
+                # If streaming was in effect, we've already drained batches, so return what we have
                 return out
+    # If any remaining items and an on_batch callback exists, flush them
+    if on_batch and out:
+        try:
+            on_batch(out[:])
+        except Exception:
+            pass
+        # return empty list if streaming callback consumed everything
+        return out
+
     return out
 
 
