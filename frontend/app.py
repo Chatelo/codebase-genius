@@ -933,8 +933,8 @@ def main():
                 if "ccg_cache" not in st.session_state:
                     st.session_state.ccg_cache = {}
 
-            # Create tabs for different views (added 📈 Diagrams and ⚠️ Errors)
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📖 Documentation", "📊 Statistics", "📈 Diagrams", "🌲 File Tree", "🔧 Raw Data", "⚠️ Errors", "🧭 CCG Explorer"])
+            # Create tabs for different views
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["📖 Documentation", "📊 Statistics", "🔧 Raw Data", "⚠️ Errors", "🧭 CCG Explorer"])
 
             with tab1:
 
@@ -976,56 +976,10 @@ def main():
 
 
             with tab3:
-                st.subheader("Mermaid Diagrams")
-                diags = result.get("diagrams", {})
-                if not diags:
-                    st.info("No diagrams found in response. Enable 'Include Diagrams' in the sidebar and re-run.")
-                else:
-                    if diags.get("call_graph"):
-                        render_mermaid_diagram("Call Graph", diags["call_graph"], height=600)
-                        st.download_button(
-                            label="\u2B07\uFE0F Download Call Graph (.mmd)",
-                            data=diags["call_graph"],
-                            file_name="call_graph.mmd",
-                            mime="text/plain",
-                        )
-                        copy_mmd_button("📋 Copy Call Graph (.mmd)", diags["call_graph"], key="call-diag")
-
-                    if diags.get("class_hierarchy"):
-                        render_mermaid_diagram("Class Hierarchy", diags["class_hierarchy"], height=600)
-                        st.download_button(
-                            label="\u2B07\uFE0F Download Class Hierarchy (.mmd)",
-                            data=diags["class_hierarchy"],
-                            file_name="class_hierarchy.mmd",
-                            mime="text/plain",
-                        )
-                        copy_mmd_button("📋 Copy Class Hierarchy (.mmd)", diags["class_hierarchy"], key="class-diag")
-
-                    if diags.get("module_graph"):
-                        render_mermaid_diagram("Module Graph", diags["module_graph"], height=500)
-                        st.download_button(
-                            label="\u2B07\uFE0F Download Module Graph (.mmd)",
-                            data=diags["module_graph"],
-                            file_name="module_graph.mmd",
-                            mime="text/plain",
-                        )
-                        copy_mmd_button("📋 Copy Module Graph (.mmd)", diags["module_graph"], key="module-diag")
-
-
-            with tab4:
-                if "file_tree" in result:
-                    if not result.get("file_tree") and not return_full_data:
-                        st.info("File tree not included in response (Include full response payload disabled). Enable in sidebar to view.")
-                    else:
-                        render_file_tree(result["file_tree"])
-                else:
-                    st.info("No file tree available.")
-
-            with tab5:
                 st.subheader("Raw API Response")
                 st.json(result)
 
-            with tab6:
+            with tab4:
                 ents = result.get("entities") or {}
                 errs = []
                 if isinstance(ents, dict):
@@ -1046,7 +1000,7 @@ def main():
                     st.info("No errors were recorded.")
 
 
-            with tab7:
+            with tab5:
                 st.subheader("🧭 CCG Explorer")
                 lr = st.session_state.get("last_repo_url")
                 ld = st.session_state.get("last_depth")
