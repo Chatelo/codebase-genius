@@ -343,27 +343,69 @@ def build_structured_markdown(
     )
     use_md = "## Usage\n\n" + usage_body + "\n\n"
 
-    # Project Structure (best-effort outline from file_tree when available)
+    # Project Structure (render exactly like Tree tab logic)
     proj_struct_md = "## 📁 Project Structure\n\n"
     file_tree = (overview or {}).get("file_tree") if isinstance(overview, dict) else None
     try:
-        def _render_tree(ft):
-            # ft expected as list of dicts with keys: path, type (file/dir), children
+        # Build a nested tree structure from a flat list of file paths
+        def _build_nested(ft_list):
+            root = {"dirs": {}, "files": []}
+            for f in (ft_list or []):
+                try:
+                    path = str(f.get("path", ""))
+                except Exception:
+                    path = ""
+                parts = [p for p in path.split("/") if p]
+                if not parts:
+                    continue
+                node = root
+                for d in parts[:-1]:
+                    node = node["dirs"].setdefault(d, {"dirs": {}, "files": []})
+                node["files"].append(parts[-1])
+            return root
+
+        def _file_kind(name: str) -> str:
+            lower = name.lower()
+            if lower.endswith(".py"): return "py"
+            if lower.endswith((".js", ".jsx", ".ts", ".tsx")): return "js"
+            if lower.endswith((".md", ".rst")): return "md"
+            if lower.endswith((".json", ".yml", ".yaml", ".toml")): return "conf"
+            if lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".svg")): return "img"
+            return "other"
+
+        def _file_icon(name: str) -> str:
+            k = _file_kind(name)
+            return {"py": "🐍", "js": "🧩", "md": "📘", "conf": "🧾", "img": "🖼️"}.get(k, "📄")
+
+        def _build_lines(node, prefix: str = "", depth: int = 0, max_depth: int = 3):
             lines = []
-            def _walk(items, prefix=""):
-                for it in items or []:
-                    name = it.get("name") or it.get("path") or it.get("file") or it.get("module") or ""
-                    if not name:
-                        continue
-                    if it.get("type") == "dir" or it.get("is_dir"):
-                        lines.append(f"{prefix}├── {name}/")
-                        _walk(it.get("children") or [], prefix + "│   ")
-                    else:
-                        lines.append(f"{prefix}├── {name}")
-            _walk(ft if isinstance(ft, list) else [])
-            return "\n".join(lines[:200])  # cap length
-        if file_tree:
-            proj_struct_md += "```\n" + _render_tree(file_tree) + "\n```\n\n"
+            dirs = sorted(node.get("dirs", {}).items(), key=lambda x: x[0])
+            files = sorted(node.get("files", []))
+            total = len(dirs) + len(files)
+
+            # Directories
+            for idx, (dname, dnode) in enumerate(dirs):
+                last = (idx == total - 1) and (len(files) == 0)
+                branch = "└──" if last else "├──"
+                lines.append(f"{prefix}{branch} 📁 {dname}/")
+                next_prefix = prefix + ("    " if last else "│   ")
+                if depth + 1 < max_depth:
+                    lines.extend(_build_lines(dnode, next_prefix, depth + 1, max_depth))
+
+            # Files
+            for j, fname in enumerate(files):
+                last = (j + len(dirs) == total - 1)
+                branch = "└──" if last else "├──"
+                icon = _file_icon(fname)
+                lines.append(f"{prefix}{branch} {icon} {fname}")
+            return lines
+
+        if isinstance(file_tree, list) and file_tree:
+            nested = _build_nested(file_tree)
+            header = "📁 Repository Root/"
+            lines = [header]
+            lines.extend(_build_lines(nested, "", 0, 3))
+            proj_struct_md += "```\n" + "\n".join(lines) + "\n```\n\n"
         else:
             proj_struct_md += "Structure not available.\n\n"
     except Exception:
