@@ -707,7 +707,7 @@ def main():
 
         # Initialize session state for diagram controls
         if "include_diagrams" not in st.session_state:
-            st.session_state.include_diagrams = False
+            st.session_state.include_diagrams = True
         if "diagram_filter_tests" not in st.session_state:
             st.session_state.diagram_filter_tests = True
         if "diagram_max_edges_call" not in st.session_state:
