@@ -5,5 +5,3 @@ backend/.cache/*
 outputs/
 doc/
 scripts
-mk-format.md
-promt.md
