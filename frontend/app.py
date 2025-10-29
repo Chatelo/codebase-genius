@@ -419,41 +419,73 @@ def render_file_tree(file_tree: List[Dict[str, Any]]):
 def render_mermaid_diagram(title: str, diagram: str, height: int = 500):
         """Render a Mermaid diagram inside Streamlit using an isolated HTML snippet.
 
-        This uses a <pre class="mermaid"> wrapper and the modern mermaid.run API
-        (recommended for v10+). Using an ES module import and `mermaid.run` makes
-        rendering more reliable in the iframe created by Streamlit's components.html.
+        Improvements:
+        - HTML-escape special characters in diagram source to avoid HTML parsing issues
+        - Unique container scoping so multiple diagrams never conflict
+        - Robust loader: try ESM first, then fall back to UMD build if ESM import fails
+        - Looser security level to allow long labels and special chars in nodes
         """
         st.markdown(f"#### {title}")
         if not isinstance(diagram, str) or not diagram.strip():
                 st.info("No diagram available.")
                 return
 
-        # Use <pre class="mermaid"> as the canonical container per Mermaid docs and
-        # use the esm module so we can await mermaid.run() which is the recommended
-        # approach for v10+ and v11.
-        safe_diagram = diagram
+        from html import escape as _html_escape
+
+        container_id = f"mmd-{uuid.uuid4().hex}"
+        # Escape only &,<,> leaving quotes as-is to keep Mermaid labels intact
+        safe_diagram = _html_escape(diagram, quote=False)
         html = f"""
-        <div>
+        <div id="{container_id}" style="width:100%;">
+            <style>
+                /* Ensure visible overflow for large diagrams and monospace font for consistency */
+                #{container_id} .mermaid {{
+                    display:block; width:100%; overflow:auto; font-family: ui-monospace, monospace;
+                }}
+            </style>
             <pre class="mermaid">{safe_diagram}</pre>
         </div>
         <script type="module">
-            // Import the ESM build of mermaid and run rendering explicitly. This
-            // ensures rendering happens after the library is available and we can
-            // target the '.mermaid' selector inside this HTML fragment.
-            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-            try {{
+            const scopeSel = '#{container_id} .mermaid';
+            async function esmRender() {{
+                const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
                 mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
-                (async () => {{
-                    try {{
-                        await mermaid.run({{ querySelector: '.mermaid', suppressErrors: true }});
-                    }} catch (err) {{
-                        // Fail soft: log into the iframe console so debugging is possible.
-                        console.error('Mermaid render error:', err);
-                    }}
-                }})();
-            }} catch (e) {{
-                console.error('Mermaid init/import failed', e);
+                await mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
+                return true;
             }}
+            (async () => {{
+                try {{
+                    await esmRender();
+                }} catch (e) {{
+                    console.warn('ESM mermaid failed, falling back to UMD', e);
+                    // Fallback to UMD build
+                    function loadScript(src) {{
+                        return new Promise((resolve, reject) => {{
+                            const s = document.createElement('script');
+                            s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
+                            document.head.appendChild(s);
+                        }});
+                    }}
+                    try {{
+                        await loadScript('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js');
+                    }} catch (e2) {{
+                        try {{ await loadScript('https://unpkg.com/mermaid@11/dist/mermaid.min.js'); }} catch (e3) {{ console.error('UMD load failed', e2, e3); }}
+                    }}
+                    try {{
+                        if (window.mermaid) {{
+                            window.mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
+                            // UMD exposes contentLoaded to render existing elements
+                            if (typeof window.mermaid.run === 'function') {{
+                                await window.mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
+                            }} else if (typeof window.mermaid.contentLoaded === 'function') {{
+                                window.mermaid.contentLoaded();
+                            }}
+                        }} else {{
+                            console.error('Mermaid UMD not available after load');
+                        }}
+                    }} catch (e4) {{ console.error('Mermaid UMD render failed', e4); }}
+                }}
+            }})();
         </script>
         """
 
@@ -464,10 +496,11 @@ def render_markdown_with_mermaid(documentation: str):
         """Render markdown that may contain ```mermaid fenced blocks.
 
         For each mermaid fenced block we render it using components.html (so the
-        Mermaid library can run), and for other markdown we use st.markdown. This
-        avoids showing raw mermaid text in Streamlit's markdown renderer.
+        Mermaid library can run), and for other markdown we use st.markdown.
+        Uses the same robust loader and HTML-escaping as render_mermaid_diagram.
         """
         import re
+        from html import escape as _html_escape
 
         if not documentation:
                 return
@@ -480,24 +513,54 @@ def render_markdown_with_mermaid(documentation: str):
                 if pre.strip():
                         st.markdown(pre)
                 mmd = m.group(1) or ""
-                # Render the mermaid fragment without an extra title
+                container_id = f"mmd-{uuid.uuid4().hex}"
+                safe_mmd = _html_escape(mmd, quote=False)
                 html = f"""
-                <div>
-                    <pre class=\"mermaid\">{mmd}</pre>
+                <div id=\"{container_id}\" style=\"width:100%;\">
+                    <pre class=\"mermaid\">{safe_mmd}</pre>
                 </div>
                 <script type=\"module\">
-                    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-                    try {{
+                    const scopeSel = '#{container_id} .mermaid';
+                    async function esmRender() {{
+                        const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
                         mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
-                        (async () => {{
+                        await mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
+                        return true;
+                    }}
+                    (async () => {{
+                        try {{
+                            await esmRender();
+                        }} catch (e) {{
+                            console.warn('ESM mermaid failed, falling back to UMD', e);
+                            function loadScript(src) {{
+                                return new Promise((resolve, reject) => {{
+                                    const s = document.createElement('script');
+                                    s.src = src; s.async = true; s.onload = resolve; s.onerror = reject;
+                                    document.head.appendChild(s);
+                                }});
+                            }}
                             try {{
-                                await mermaid.run({{ querySelector: '.mermaid', suppressErrors: true }});
-                            }} catch (err) {{ console.error('Mermaid render error:', err); }}
-                        }})();
-                    }} catch (e) {{ console.error('Mermaid init/import failed', e); }}
+                                await loadScript('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js');
+                            }} catch (e2) {{
+                                try {{ await loadScript('https://unpkg.com/mermaid@11/dist/mermaid.min.js'); }} catch (e3) {{ console.error('UMD load failed', e2, e3); }}
+                            }}
+                            try {{
+                                if (window.mermaid) {{
+                                    window.mermaid.initialize({{ startOnLoad: false, securityLevel: 'loose' }});
+                                    if (typeof window.mermaid.run === 'function') {{
+                                        await window.mermaid.run({{ querySelector: scopeSel, suppressErrors: true }});
+                                    }} else if (typeof window.mermaid.contentLoaded === 'function') {{
+                                        window.mermaid.contentLoaded();
+                                    }}
+                                }} else {{
+                                    console.error('Mermaid UMD not available after load');
+                                }}
+                            }} catch (e4) {{ console.error('Mermaid UMD render failed', e4); }}
+                        }}
+                    }})();
                 </script>
                 """
-                components.html(html, height=400)
+                components.html(html, height=420)
                 last = m.end()
 
         tail = documentation[last:]
