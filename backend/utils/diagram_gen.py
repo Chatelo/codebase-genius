@@ -22,6 +22,20 @@ def _sanitize_id(label: str) -> str:
     return ident
 
 
+def _escape_label(label: str) -> str:
+    """Escape special characters in Mermaid labels.
+
+    Mermaid labels enclosed in quotes need backslashes and quotes escaped.
+    This ensures labels like 'Module "core"' render correctly as 'Module \"core\"'.
+    """
+    if not isinstance(label, str):
+        label = str(label)
+    # Escape backslashes first, then double quotes
+    label = label.replace("\\", "\\\\")
+    label = label.replace('"', '\\"')
+    return label
+
+
 def _id_for(label: str, cache: Dict[str, str]) -> str:
     """Return a stable id for a given label using a cache."""
     if label in cache:
@@ -82,8 +96,11 @@ def make_call_graph_mermaid(entities: Dict, max_edges: int = 400, filter_tests: 
                 continue
             sid = _id_for(src, id_cache)
             did = _id_for(dst, id_cache)
+            # Escape labels to handle special characters like quotes
+            src_escaped = _escape_label(src)
+            dst_escaped = _escape_label(dst)
             # Inline node definitions with labels to ensure valid Mermaid syntax
-            edge = f"  {sid}[\"{src}\"] --> {did}[\"{dst}\"]"
+            edge = f"  {sid}[\"{src_escaped}\"] --> {did}[\"{dst_escaped}\"]"
             if edge not in edges:
                 lines.append(edge)
                 edges.add(edge)
