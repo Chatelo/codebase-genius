@@ -648,29 +648,146 @@ def doc_collect(repo: Repository, entities: dict, top_n: int = 10) -> dict {
 }
 
 
-#* StatsCollector: Computes statistics from Repository node *#
+#* StatsCollector: Computes statistics from Repository node via declarative traversal (Jac-idiomatic) *#
 walker StatsCollector {
     has top_n: int = 10;
     has stats: dict = {};
 
     can collect with Repository entry {
-        # Use existing helper function to collect stats from file_tree
-        ft = []; try { if ("file_tree" in here) { ft = here.file_tree; } } except Exception as e { ft = []; }
-        visitor.stats = collect_stats_from_repo(here, ft, visitor.top_n);
+        # Initialize aggregates
+        visitor.stats = {
+            "files": 0,
+            "jac_files": 0,
+            "docs": 0,
+            "code_files": 0,
+            "python_files": 0,
+            "languages": {},
+            "doc_kinds": {},
+            "tests_files": 0,
+            "examples_files": 0,
+            "tests_code_files": 0,
+            "examples_code_files": 0,
+            "top_dirs": {},
+            "top_dirs_code": {},
+            "top_files_by_size": [],
+            "top_files_by_lines": [],
+            "ccg_counts": {"calls": 0, "inherits": 0, "imports": 0}
+        };
+        # Traverse all CodeFile nodes
+        visit [->:Contains:->];
+    }
 
+    can collect with Directory entry {
+        visit [->:Contains:->];
+    }
+
+    can collect with CodeFile entry {
+        # Update totals
+        visitor.stats["files"] += 1;
+        visitor.stats["code_files"] += 1;
+
+        p = here.path;
+        lang = (here.language if ("language" in here) else "");
+        if lang != "" {
+            if lang not in visitor.stats["languages"] { visitor.stats["languages"][lang] = 0; }
+            visitor.stats["languages"][lang] += 1;
+            if lang == "jac" { visitor.stats["jac_files"] += 1; }
+            if lang == "python" { visitor.stats["python_files"] += 1; }
+        }
+
+        # Top-level directory buckets
+        if ("/" in p) {
+            top = p.split("/")[0];
+            if top not in visitor.stats["top_dirs"] { visitor.stats["top_dirs"][top] = 0; }
+            visitor.stats["top_dirs"][top] += 1;
+            if top not in visitor.stats["top_dirs_code"] { visitor.stats["top_dirs_code"][top] = 0; }
+            visitor.stats["top_dirs_code"][top] += 1;
+        }
+
+        # Tests/examples buckets
+        lp = p.lower();
+        is_test = ("/tests/" in lp) or lp.startswith("tests/") or ("/test/" in lp) or lp.startswith("test/");
+        is_example = ("/examples/" in lp) or lp.startswith("examples/") or ("/example/" in lp) or lp.startswith("example/");
+        if is_test { visitor.stats["tests_files"] += 1; visitor.stats["tests_code_files"] += 1; }
+        if is_example { visitor.stats["examples_files"] += 1; visitor.stats["examples_code_files"] += 1; }
+
+        # Docs (based on flag or extension)
+        if ("is_doc" in here) and here.is_doc { visitor.stats["docs"] += 1; }
+
+        # Maintain top-N lists
+        try {
+            _insort_desc(visitor.stats["top_files_by_size"], {"path": p, "size": here.size, "language": lang}, "size");
+            if len(visitor.stats["top_files_by_size"]) > visitor.top_n { visitor.stats["top_files_by_size"].pop(); }
+        } except Exception as e { }
+        try {
+            _insort_desc(visitor.stats["top_files_by_lines"], {"path": p, "lines": here.lines, "language": lang}, "lines");
+            if len(visitor.stats["top_files_by_lines"]) > visitor.top_n { visitor.stats["top_files_by_lines"].pop(); }
+        } except Exception as e { }
+    }
+
+    can collect with Repository exit {
+        # Prefer precise CCG counts if present on the repo node
+        try {
+            if ("ccg_stats" in here) {
+                cs = here.ccg_stats;
+                if ("calls" in cs) { visitor.stats["ccg_counts"]["calls"] = cs["calls"]; }
+                if ("inherits" in cs) { visitor.stats["ccg_counts"]["inherits"] = cs["inherits"]; }
+                if ("imports" in cs) { visitor.stats["ccg_counts"]["imports"] = cs["imports"]; }
+            } else {
+                if ("ccg_calls" in here) { visitor.stats["ccg_counts"]["calls"] = len(here.ccg_calls); }
+                if ("ccg_inherits" in here) { visitor.stats["ccg_counts"]["inherits"] = len(here.ccg_inherits); }
+                if ("ccg_imports" in here) { visitor.stats["ccg_counts"]["imports"] = len(here.ccg_imports); }
+            }
+        } except Exception as e { }
         report visitor.stats;
     }
 }
 
-#* DocCollector: Collects documentation-relevant data from Repository node *#
+#* DocCollector: Collects documentation-relevant data from Repository node via traversal *#
 walker DocCollector {
     has top_n: int = 10;
+    has top_by_lines: list = [];
+    has top_by_size: list = [];
+    has class_names: list = [];
+    has seen_classes: dict = {};
+    has total_funcs: int = 0;
 
     can collect with Repository entry {
-        # Use existing helper function to collect documentation data from file_tree
-        ft = []; try { if ("file_tree" in here) { ft = here.file_tree; } } except Exception as e { ft = []; }
-        result = doc_collect(ft, visitor.top_n);
-        report result;
+        # Walk the graph to gather documentation-friendly aggregates
+        visit [->:Contains:->];
+    }
+
+    can collect with Directory entry {
+        visit [->:Contains:->];
+    }
+
+    can collect with CodeFile entry {
+        p = here.path; lang = (here.language if ("language" in here) else "");
+        try {
+            _insort_desc(visitor.top_by_lines, {"path": p, "lines": here.lines, "language": lang}, "lines");
+            if len(visitor.top_by_lines) > visitor.top_n { visitor.top_by_lines.pop(); }
+        } except Exception as e { }
+        try {
+            _insort_desc(visitor.top_by_size, {"path": p, "size": here.size, "language": lang}, "size");
+            if len(visitor.top_by_size) > visitor.top_n { visitor.top_by_size.pop(); }
+        } except Exception as e { }
+        visit [->:Defines:->];
+    }
+
+    can collect with Function entry { visitor.total_funcs += 1; }
+
+    can collect with Class entry {
+        cn = here.name;
+        if cn not in visitor.seen_classes { visitor.seen_classes[cn] = True; visitor.class_names.append(cn); }
+    }
+
+    can collect with Repository exit {
+        report {
+            "top_files": visitor.top_by_lines,
+            "top_files_by_size": visitor.top_by_size,
+            "api_classes": visitor.class_names[0:visitor.top_n],
+            "total_functions": visitor.total_funcs
+        };
     }
 }
 

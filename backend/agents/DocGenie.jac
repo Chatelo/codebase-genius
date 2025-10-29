@@ -1,16 +1,11 @@
-# Generates documentation using by llm (DocGenie)
+sem docgen.purpose is "Generates documentation using by llm (DocGenie)";
 
 import from byllm.llm { Model }
 
 glob llm = Model(model_name="gpt-4o-mini");
 
-#* Generate a high-level repository overview given minimal inputs.
-# Inputs:
-# - repo_url: the repository URL or identifier
-# - depth: 'fast', 'standard', or 'deep'
-# - extra_context: additional hints or extracted signals
-# Return: concise markdown overview
-*#
+sem docgen.summarize is "High-level repository overview; inputs: repo_url, depth [fast|standard|deep], extra_context; returns concise markdown";
+sem docgen.llm.method is "Reason (temp=0.3)";
 def docgen_summarize(repo_url: str, depth: str = "standard", extra_context: str = "") -> str by llm(
     method="Reason",
     temperature=0.3
