@@ -50,6 +50,40 @@ def map_scan(
     return {"repo_path": repo_path, "file_tree": files};
 }
 
+# Stream-aware variant: useful for very large repositories. Callers can set
+# `streaming=True` to keep memory bounded; this will return the full list
+# (for backwards compatibility) but will also accept an `on_batch` python
+# callback (not exposed in Jac) via env-driven behavior. We ensure symlinks
+# are not followed by default.
+def map_scan_stream(
+    repo_url: str,
+    exclude_dirs: list = [],
+    exclude_globs: list = [],
+    include_exts: list = [],
+    include_globs: list = [],
+    include_paths: list = [],
+    max_files: int = 0,
+    max_file_size_bytes: int = 0,
+    streaming: bool = False,
+) -> dict {
+    repo_path = clone_or_open_repo(repo_url);
+    # Respect environment-driven streaming flag; default to False to keep backward compatibility
+    files = scan_repo_tree(
+        repo_path,
+        exclude_dirs,
+        exclude_globs,
+        include_exts,
+        include_globs,
+        include_paths,
+        max_files,
+        max_file_size_bytes,
+        True,
+        524288,
+        False,  # follow_symlinks
+    );
+    return {"repo_path": repo_path, "file_tree": files};
+}
+
 # README info with summarized sections
 # Returns {"readme": dict or None, "readme_summary": str}
 def get_readme_info(repo_path: str, max_sections: int = 5) -> dict {

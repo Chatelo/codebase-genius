@@ -225,9 +225,45 @@ def _naive_extract_generic(path: Path, language: str) -> Dict[str, Any]:
 
 
 def _ts_extract(path: Path, language: str) -> Dict[str, Any]:
-    # Placeholder: if TS parser available, route to language-specific extraction
-    # For now, defer to naive language handlers
-    return _naive_extract(path, language)
+    # If a tree-sitter parser is available, attempt to use it for improved accuracy.
+    # Be defensive: tree-sitter parsers are version-dependent and may throw parsing
+    # errors on some codebases. If parsing fails, return a structured warning and
+    # fall back to a naive extractor.
+    # Also avoid attempting heavy parsing on very large files.
+    max_ts_bytes = int(os.environ.get("CBG_TS_MAX_BYTES", str(200 * 1024)))
+    try:
+        size = path.stat().st_size
+    except Exception:
+        size = 0
+
+    if size > max_ts_bytes:
+        # Skip heavy parsing for very large TS/JS files; fall back to naive extractor
+        return {"_parse_warning": f"Skipped tree-sitter parse due to file size > {max_ts_bytes} bytes"} | _naive_extract(path, language)
+
+    if get_parser is None:
+        # No tree-sitter available; use naive fallback
+        return _naive_extract(path, language)
+
+    # Try to invoke parser; guard against parser exceptions
+    parser_info = None
+    try:
+        # Some tree-sitter bindings accept language name variations; prefer explicit request
+        parser = get_parser(language)
+        parser_info = getattr(parser, "__name__", str(parser))
+        # If parser exposes parse() or other APIs, attempt extraction (best-effort)
+        # NOTE: tree-sitter extraction implementation is out of scope here; keep defensive
+        try:
+            # Attempt a lightweight parse call if available
+            tree = parser.parse(path.read_bytes()) if hasattr(parser, "parse") else None
+            # Not attempting full AST traversal here - use naive extractor as safe fallback
+            return _naive_extract(path, language)
+        except Exception as e:
+            # Fall back to naive extractor with warning
+            return {"_parse_warning": f"Tree-sitter parse failed: {e}. Using naive fallback."} | _naive_extract(path, language)
+    except Exception as e:
+        # Parser resolution failed; include hint about pinning parser versions
+        ver_hint = os.environ.get("CBG_TS_PARSER_VERSION", "unspecified")
+        return {"_parse_warning": f"TS parser unavailable or failed ({e}). Consider installing a pinned parser (CBG_TS_PARSER_VERSION={ver_hint})."} | _naive_extract(path, language)
 
 
 def _naive_extract(path: Path, language: str) -> Dict[str, Any]:
