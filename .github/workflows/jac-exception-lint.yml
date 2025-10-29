@@ -1,0 +1,28 @@
+name: Jac exception keyword lint
+
+on:
+  push:
+    paths:
+      - '**/*.jac'
+  pull_request:
+    paths:
+      - '**/*.jac'
+
+jobs:
+  jac-exception-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Fail if 'catch' is used in Jac files
+        run: |
+          set -euo pipefail
+          # Search .jac files for the substring "catch " which indicates JS-style exception handling
+          if git grep -n -- "catch " -- '*.jac' >/dev/null 2>&1; then
+            echo "::error::Found 'catch' usage in .jac files. Please use 'except' for exception handling in Jac walkers." 
+            git --no-pager grep -n -- "catch " -- '*.jac' || true
+            exit 1
+          else
+            echo "No 'catch' usage found in .jac files."
+          fi
