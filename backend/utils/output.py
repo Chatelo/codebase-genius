@@ -230,8 +230,7 @@ def build_structured_markdown(
         "- [Overview](#project-overview)\n"
         "- [Key Features](#key-features)\n"
         "- [Installation](#installation)\n"
-        "- [Usage](#usage)\n"
-        "- [Quick Start](#quick-start)\n"
+            "- [Getting Started](#getting-started)\n"
         "- [Project Structure](#project-structure)\n"
         "- [Core Architecture](#core-architecture)\n"
         "- [API Reference](#api-reference-summary)\n"
@@ -281,6 +280,20 @@ def build_structured_markdown(
     key_features_md = "## ✨ Key Features\n\n" + "\n".join([f"- **{f}**" for f in feats]) + "\n\n"
 
     # Installation / Usage (extract from README sections if available)
+    # Helpers: balance stray fenced code blocks and identify typical run lines
+    def _balance_fences(text: str) -> str:
+        try:
+            if text and text.count("```") % 2 == 1:
+                return text.rstrip() + "\n```\n"
+        except Exception:
+            pass
+        return text
+
+    RUN_PATTERNS = (
+        "jac serve", "python -m", "npm run", "npm start", "pnpm", "yarn",
+        "uv run", "pytest", "streamlit run", "docker run", "poetry run",
+    )
+
     inst_txt = ""; use_txt = ""
     try:
         if overview and isinstance(overview, dict):
@@ -291,7 +304,7 @@ def build_structured_markdown(
                 content = str(sec.get("content", ""))
                 if not inst_txt and ("install" in title):
                     inst_txt = content
-                if not use_txt and ("usage" in title or "use" in title or "run" in title or "quick start" in title):
+                if not use_txt and ("usage" in title or "use" in title or "run" in title or "quick start" in title or "getting started" in title):
                     use_txt = content
     except Exception:
         pass
@@ -299,13 +312,35 @@ def build_structured_markdown(
     inst_txt = _dedupe_blocks(_strip_md_headings(_normalize_text(inst_txt)))
     use_txt = _dedupe_blocks(_strip_md_headings(_normalize_text(use_txt)))
 
+    # Keep Installation strictly setup/dependencies: filter out typical run commands
+    if inst_txt:
+        try:
+            filtered_lines = []
+            for ln in inst_txt.splitlines():
+                if any(pat in ln for pat in RUN_PATTERNS):
+                    continue
+                filtered_lines.append(ln)
+            inst_txt = "\n".join(filtered_lines)
+        except Exception:
+            pass
+
+    # Balance fences to avoid leaking blocks into subsequent sections
+    inst_txt = _balance_fences(inst_txt)
+    use_txt = _balance_fences(use_txt)
+
     inst_md = "## Installation\n\n" + (inst_txt or "Refer to the repository README for installation instructions.") + "\n\n"
-    # Quick Start placeholder (we can't reliably synthesize runnable examples for arbitrary repos)
-    quick_start_md = (
-        "## ⚡ Quick Start\n\n"
-        "> Refer to the project's README for a minimal working example.\n\n"
+    # Getting Started focuses on running/using after setup; when README provides usage, move it here
+    if use_txt:
+        getting_started_body = use_txt
+        usage_body = "See Getting Started for basic run. Refer to the repository README for advanced usage."
+    else:
+        getting_started_body = "> After installation, refer to the repository README for a minimal working example."
+        usage_body = "Refer to the repository README for usage examples."
+
+    getting_started_md = (
+        "## 🚀 Getting Started\n\n" + getting_started_body + "\n\n"
     )
-    use_md = "## Usage\n\n" + (use_txt or "Refer to the repository README for usage examples.") + "\n\n"
+    use_md = "## Usage\n\n" + usage_body + "\n\n"
 
     # Project Structure (best-effort outline from file_tree when available)
     proj_struct_md = "## 📁 Project Structure\n\n"
@@ -524,7 +559,7 @@ def build_structured_markdown(
         key_features_md,
         inst_md,
         use_md,
-        quick_start_md,
+    getting_started_md,
         proj_struct_md,
         core_arch_md,
         api_md,
