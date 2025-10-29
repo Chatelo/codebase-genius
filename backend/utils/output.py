@@ -571,8 +571,52 @@ def build_structured_markdown(
     if ccg_mermaid:
         cites_md += ccg_mermaid + "\n\n"
     # Additional template sections (lightweight placeholders to match style)
-    usage_examples_md = "## 💡 Usage Examples\n\n" \
-        "+ See README for examples relevant to this repository.\n\n"
+    # Usage Examples — point to repository README with a real URL
+    def _normalize_repo_web_url(u: str) -> str:
+        try:
+            if not u:
+                return ""
+            base = u.strip().rstrip("/")
+            # Convert SSH to HTTPS for GitHub
+            if base.startswith("git@github.com:"):
+                rest = base.split(":", 1)[1]
+                base = f"https://github.com/{rest}"
+            # Strip .git suffix
+            if base.endswith(".git"):
+                base = base[:-4]
+            # If looks like org/repo, assume GitHub
+            if ("://" not in base) and ("@" not in base) and ("/" in base):
+                base = f"https://github.com/{base}"
+            return base
+        except Exception:
+            return u or ""
+
+    readme_path = ""
+    try:
+        rd = (overview or {}).get("readme") if isinstance(overview, dict) else None
+        readme_path = (rd or {}).get("path") or ""
+    except Exception:
+        readme_path = ""
+
+    base_web = _normalize_repo_web_url(repo_url)
+    readme_url = base_web
+    # Prefer GitHub-friendly blob link when possible
+    if base_web and "github.com" in base_web:
+        if readme_path:
+            readme_url = f"{base_web}/blob/HEAD/{readme_path}"
+        else:
+            readme_url = f"{base_web}#readme"
+    else:
+        # Fallback: append README path if available, else leave base URL
+        if readme_path:
+            sep = "" if base_web.endswith("/") else "/"
+            readme_url = f"{base_web}{sep}{readme_path}" if base_web else readme_path
+
+    link_label = readme_path or "README"
+    usage_examples_md = (
+        "## 💡 Usage Examples\n\n"
+        f"+ See README for examples: [{link_label}]({readme_url}).\n\n"
+    )
 
     configuration_md = "## ⚙️ Configuration\n\n" \
         "+ Refer to the repository for configuration files and environment variables.\n\n"
