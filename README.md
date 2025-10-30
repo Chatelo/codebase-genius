@@ -9,47 +9,14 @@ Automatically analyze any GitHub repository and generate comprehensive, high-qua
 ![JacLang](https://img.shields.io/badge/jaclang-0.8.10-purple.svg)
 ![Streamlit](https://img.shields.io/badge/streamlit-1.39.0-red.svg)
 
----
-
 ## ✨ Features
 
-### 🔍 Deep Code Analysis
-- **Repository Cloning**: Automatically clone and cache GitHub repositories
-- **File Tree Scanning**: Intelligent directory traversal with configurable filters
-- **Code Entity Extraction**: Parse functions, classes, and modules using tree-sitter
-- **Multi-Language Support**: Python, JavaScript, TypeScript, Java, Go, Rust, and more
-
-### 🤖 AI-Powered Documentation
-- **LLM Integration**: Generate comprehensive documentation using OpenAI GPT models
-- **Context-Aware**: Enriched prompts with repository statistics and API surface
-- **Structured Output**: Well-formatted markdown with sections for overview, structure, API, and more
-
-### 📊 Rich Statistics
-- File counts (total, code, tests, docs, examples)
-- Language breakdown
-- Top directories by code files
-- Top files by size and lines of code
-- Test coverage indicators
-
-### 🎯 Advanced Filtering
-- **Include Paths**: Focus on specific directories (e.g., `src/`, `lib/`)
-- **Include Extensions**: Only analyze certain file types (e.g., `.py`, `.js`)
-- **Include Globs**: Positive pattern matching
-- **Exclude Directories**: Skip build artifacts, caches, etc.
-- **Exclude Globs**: Filter out binaries, images, notebooks
-
-### ⚡ Performance Controls
-- **Max Files**: Limit total files scanned
-- **Max File Size**: Skip large files
-- **Fast Line Counting**: Efficient LOC computation with capped reads
-- **Repository Caching**: Avoid redundant cloning
-
-### 🎨 Beautiful Web UI
-- **Streamlit Interface**: Modern, responsive web application
-- **Interactive Visualizations**: Charts, metrics, expandable file trees
-- **Real-time Feedback**: Progress indicators and error handling
-- **Export**: Download documentation as Markdown
-
+- 🔍 **Smart Analysis** — Parses files, classes, and functions using Tree-sitter
+- 🤖 **AI Documentation** — GPT-powered summaries with repository context
+- 📊 **Code Statistics** — File counts, language breakdowns, and LOC
+- 🎨 **Interactive UI** — Streamlit dashboard with charts and file explorer
+- ⚙️ **Filters & Limits** — Control scan depth, include/exclude paths, size limits
+- 🧭 **Graph APIs** — Explore function calls, subclasses, and dependencies
 ---
 
 ## 🚀 Quick Start
@@ -70,7 +37,7 @@ cd codebase-genius
 cd backend
 uv sync
 export OPENAI_API_KEY="your-api-key-here"
-#You may use Geminias they have generous free tier
+# You may use Gemini as they have generous free tier
 uv run jac serve main.jac --port 8000
 
 # In a new terminal, set up frontend
@@ -97,243 +64,29 @@ The UI will open at `http://localhost:8501`
 5. View results in tabs:
    - 📖 **Documentation**: AI-generated markdown
    - 📊 **Statistics**: Metrics and charts
-   - 🌲 **File Tree**: Repository structure
    - 🔧 **Raw Data**: Full API response
 6. Download documentation using the **⬇️ Download** button
 
-### API
-
-```python
-import requests
-
-response = requests.post("http://localhost:8000/walker/generate_docs", json={
-    "repo_url": "https://github.com/karpathy/micrograd",
-    "depth": "deep",
-    "use_llm": True,
-    "include_paths": ["micrograd/", "test/"],
-    "top_n": 10
-})
-
-result = response.json()["reports"][0]
-print(result["documentation"])
-```
-
 ---
 
----
+## 🧭 APIs
 
-## 🧭 CCG API (Code Context Graph)
+Codebase Genius provides several APIs for programmatic access to repository analysis and graph traversal. See [API.md](API.md) for complete documentation.
 
-These endpoints expose graph insights for functions, classes, and modules. All are public (auth=False) Jac walkers.
+### CCG API (Code Context Graph)
+Explore function calls, class hierarchies, and module dependencies through graph-based endpoints:
+- `POST /walker/api_ccg_overview` - Repository overview with top entities
+- `POST /walker/api_ccg_callers` - Functions calling a specific function
+- `POST /walker/api_ccg_callees` - Functions called by a specific function
+- `POST /walker/api_ccg_subclasses` - Subclasses of a specific class
+- `POST /walker/api_ccg_dependencies` - Modules imported by a specific module
 
-Base URL in local dev: `http://localhost:8000`.
+### Graph Traversal API
+Aggregate statistics and documentation from the built graph:
+- `POST /walker/api_graph_stats` - Repository statistics and metrics
+- `POST /walker/api_graph_docs` - Documentation-oriented aggregates
 
-- POST `/walker/api_ccg_overview`
-- POST `/walker/api_ccg_callers`
-- POST `/walker/api_ccg_callees`
-- POST `/walker/api_ccg_subclasses`
-- POST `/walker/api_ccg_dependencies`
-
-Notes
-- `depth`: "deep" builds a fuller graph; "standard" is lighter.
-- On errors, endpoints return `{ "status": "error", "message": str, "status_code": int? }`.
-- On success, endpoints include an `error` field inside the payload for non-fatal graph issues (string, may be empty).
-
-### Overview
-Request
-```json
-{
-  "repo_url": "https://github.com/org/repo",
-  "depth": "deep",
-  "top_n": 5
-}
-```
-Success response
-```json
-{
-  "status": "success",
-  "repo_url": "https://github.com/org/repo",
-  "overview": {
-    "counts": { "calls": 0, "inherits": 0, "imports": 0 },
-    "top": {
-      "functions": [{ "name": "pkg.mod.func", "count": 12 }],
-      "classes":   [{ "name": "pkg.mod.Base", "count": 5  }],
-      "modules":   [{ "name": "pkg.mod",      "count": 20 }]
-    },
-    "error": ""
-  }
-}
-```
-Error response
-```json
-{ "status": "error", "message": "repo_url is required", "status_code": 400 }
-```
-
-### Function Callers
-Request
-```json
-{
-  "repo_url": "https://github.com/org/repo",
-  "func_name": "pkg.module.function",
-  "depth": "deep"
-}
-```
-Success response
-```json
-{
-  "status": "success",
-  "repo_url": "https://github.com/org/repo",
-  "func_name": "pkg.module.function",
-  "results": [ { "name": "pkg.a.calling_func" }, "pkg.b.other_caller" ],
-  "error": ""
-}
-```
-
-### Function Callees
-Request/Response same shape as Callers, with `func_name` and `results` listing the functions called by the input function.
-
-### Class Subclasses
-Request
-```json
-{
-  "repo_url": "https://github.com/org/repo",
-  "class_name": "pkg.module.BaseClass",
-  "depth": "deep"
-}
-```
-Success response
-```json
-{
-  "status": "success",
-  "repo_url": "https://github.com/org/repo",
-  "class_name": "pkg.module.BaseClass",
-  "results": [ { "name": "pkg.module.Child" } ],
-  "error": ""
-}
-```
-
-### Module Dependencies
-Request
-```json
-{
-  "repo_url": "https://github.com/org/repo",
-  "module_name": "pkg.module",
-  "depth": "deep"
-}
-```
-Success response
-```json
-{
-  "status": "success",
-  "repo_url": "https://github.com/org/repo",
-  "module_name": "pkg.module",
-  "results": [ { "name": "pkg.other" } ],
-  "error": ""
-}
-```
-
-### cURL examples
-```bash
-# Overview
-curl -sX POST http://localhost:8000/walker/api_ccg_overview \
-  -H 'Content-Type: application/json' \
-  -d '{"repo_url":"https://github.com/org/repo","depth":"deep","top_n":5}' | jq
-
-# Callers
-curl -sX POST http://localhost:8000/walker/api_ccg_callers \
-  -H 'Content-Type: application/json' \
-  -d '{"repo_url":"https://github.com/org/repo","func_name":"pkg.module.func","depth":"deep"}' | jq
-```
-
-### Frontend integration
-- The Streamlit UI includes a dedicated tab: "🧭 CCG Explorer".
-- Provides: Overview metrics/top-N, Function Callers/Callees (with micro-mermaid diagrams), Class Subclasses, Module Dependencies.
-- Results can be copied/downloaded from the UI.
-
-
-## 🧭 Graph Traversal API (Stats + Docs)
-
-Two additional public walkers expose graph-derived aggregates. Base URL: `http://localhost:8000`.
-
-- POST `/walker/api_graph_stats` — compute repository stats via the built graph
-- POST `/walker/api_graph_docs` — collect documentation-oriented aggregates
-
-Notes
-- `depth`: "deep" builds a fuller graph; "standard" is lighter.
-- Success responses include an `error` string for non‑fatal graph issues.
-
-
-Dev: CLI smoke test
-- Run a quick check against a running backend:
-  - `python scripts/smoke_graph.py --base-url http://localhost:8000 --repo-url https://github.com/org/repo`
-
-### Graph Stats
-Request
-```json
-{
-  "repo_url": "https://github.com/org/repo",
-  "depth": "deep",
-  "top_n": 10
-}
-```
-Success response (shape)
-```json
-{
-  "status": "success",
-  "repo_url": "...",
-  "stats": {
-    "files": 0,
-    "code_files": 0,
-    "docs": 0,
-    "tests_files": 0,
-    "examples_files": 0,
-    "languages": { "python": 4 },
-    "top_dirs": { "src": 12 },
-    "top_dirs_code": { "src": 10 },
-    "top_files_by_size": [{ "path": "src/a.py", "size": 12345 }],
-    "top_files_by_lines": [{ "path": "src/a.py", "lines": 420 }],
-    "ccg_counts": { "calls": 0, "inherits": 0, "imports": 0 }
-  },
-  "error": ""
-}
-```
-
-### Graph Docs
-Request
-```json
-{
-  "repo_url": "https://github.com/org/repo",
-  "depth": "deep",
-  "top_n": 10
-}
-```
-Success response (shape)
-```json
-{
-  "status": "success",
-  "repo_url": "...",
-  "docs": {
-    "top_files": [{ "path": "src/a.py", "lines": 420 }],
-    "top_files_by_size": [{ "path": "src/a.py", "size": 12345 }],
-    "api_classes": ["pkg.mod.Base", "pkg.mod.Service"],
-    "total_functions": 123
-  },
-  "error": ""
-}
-```
-
-### cURL examples
-```bash
-# Graph Stats
-curl -sX POST http://localhost:8000/walker/api_graph_stats \
-  -H 'Content-Type: application/json' \
-  -d '{"repo_url":"https://github.com/org/repo","depth":"deep","top_n":10}' | jq
-
-# Graph Docs
-curl -sX POST http://localhost:8000/walker/api_graph_docs \
-  -H 'Content-Type: application/json' \
-  -d '{"repo_url":"https://github.com/org/repo","depth":"deep","top_n":10}' | jq
-```
+Base URL: `http://localhost:8000` (local development)
 
 
 ## 🏗️ Architecture
@@ -418,16 +171,23 @@ codebase-genius/
 │   │   ├── nodes.jac       # Node definitions
 │   │   ├── edges.jac       # Edge definitions
 │   │   └── builders.jac    # Graph construction
+│   ├── prompts/            # LLM prompt templates
 │   ├── utils/              # Python helpers
 │   │   ├── repo.py         # Git operations
 │   │   ├── fs_map.py       # File scanning
-│   │   └── ts_analyze.py   # Code parsing
+│   │   ├── ts_analyze.py   # Code parsing
+│   │   └── output.py       # Result formatting
 │   ├── main.jac            # API entry point
-│   └── README.md           # Backend docs
+│   └── pyproject.toml      # Backend dependencies
 ├── frontend/               # Streamlit UI
 │   ├── .streamlit/         # Streamlit config
 │   ├── app.py              # Main UI
-│   └── README.md           # Frontend docs
+│   ├── api_client_graph.py # API client
+│   └── pyproject.toml      # Frontend dependencies
+├── docs/                   # OpenAPI specs
+├── outputs/                # Generated documentation examples
+├── tests/                  # Test suite
+├── API.md                  # API documentation
 └── README.md               # This file
 ```
 
@@ -470,50 +230,30 @@ Micrograd is a minimalistic library for automatic differentiation...
 Total Functions: 35 functions defined across the codebase
 ...
 ```
-
 ---
 
 ## 🛠️ Configuration
 
-### Backend Configuration
-
-Edit `backend/.streamlit/secrets.toml` (if using Streamlit secrets) or set environment variables:
-
+### Environment Variables
 ```bash
-export OPENAI_API_KEY="sk-..."
-export BACKEND_PORT=8000
+export OPENAI_API_KEY="your-api-key-here"
 ```
 
-### Frontend Configuration
-
-Edit `frontend/.streamlit/secrets.toml`:
-
-```toml
-BACKEND_URL = "http://localhost:8000"
-```
-
-Edit `frontend/.streamlit/config.toml` for theme customization:
-
-```toml
-[theme]
-primaryColor = "#667eea"
-backgroundColor = "#ffffff"
-```
+### Frontend Settings
+Edit `frontend/.streamlit/config.toml` for theme customization.
 
 ---
 
 ## 📊 Sample Outputs
 
-See real examples of Codebase Genius in action:
+See real examples in the `outputs/` directory:
 
-- **[outputs/codebase-genius/](outputs/codebase-genius/)** — Analysis of this project (Codebase Genius)
-  - `codebase-genius_documentation.md` — AI-generated comprehensive documentation
-  - `diagrams/` — Mermaid diagrams (call graph, class hierarchy, module dependencies)
-  - `statistics.json` — Repository metrics and analytics
-
+- **[outputs/codebase-genius/](outputs/codebase-genius/)** — Analysis of this project
 - **[outputs/micrograd/](outputs/micrograd/)** — Analysis of [karpathy/micrograd](https://github.com/karpathy/micrograd)
-  - `micrograd_documentation.md` — AI-generated documentation
-  - `statistics.json` — Repository metrics
+- **[outputs/rust_counter_mcp/](outputs/rust_counter_mcp/)** — Analysis of a Rust project
+- **[outputs/vite/](outputs/vite/)** — Analysis of a JavaScript project
+
+Each contains AI-generated documentation, statistics, and Mermaid diagrams.
 
 
 ## 📄 License

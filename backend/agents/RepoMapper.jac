@@ -14,7 +14,6 @@ def sample_file_tree() -> list {
         {"path": "backend/agents/RepoMapper.jac", "type": "CodeFile", "language": "jac"},
         {"path": "backend/agents/CodeAnalyzer.jac", "type": "CodeFile", "language": "jac"},
         {"path": "backend/agents/DocGenie.jac", "type": "CodeFile", "language": "jac"},
-        {"path": "backend/prompts/docgen.md", "type": "Doc", "language": "md"},
     ];
 }
 

@@ -1,7 +1,6 @@
 # Codebase Genius backend entry (JacLang)
 # Sample AI-powered walker using by llm exposed via jac serve
 
-import from byllm.llm { Model }
 import from agents.DocGenie { docgen_summarize }
 import from agents.Supervisor { build_overview }
 import from agents.CodeAnalyzer { ccg_get_callers, ccg_get_callees, ccg_get_subclasses, ccg_get_dependencies }
@@ -12,7 +11,6 @@ import from utils.output { save_results_to_disk, build_structured_markdown }
 import from utils.cache { get_cache }
 
 
-glob llm = Model(model_name="gpt-4o-mini");
 
 
 # Shared small helpers for ordered inserts (desc)
@@ -40,33 +38,7 @@ def _insort_desc2(lst: list, entry: dict, key1: str, key2: str) -> None {
     if not inserted { lst.append(entry); }
 }
 
-# AI function (not a walker ability) powered by byLLM
-#* Generate a friendly greeting for the given name. *#
-def make_greeting(name: str) -> str by llm(method="Reason");
 
-walker api_hello {
-    has who: str = "Codebase Genius";
-    has use_llm: bool = False;  # Toggle to call LLM or use fallback
-
-    obj __specs__ {
-        # Make this walker publicly callable via REST (no auth for smoke test)
-        static has auth: bool = False;
-        # static has methods: list = ["post"];  # default is POST
-    }
-
-    can process with `root entry {
-        msg = "";
-        if self.use_llm {
-            msg = make_greeting(self.who);
-        } else {
-            msg = f"Hello, {self.who}!";
-        }
-        report {
-            "status": "success",
-            "message": msg
-        };
-    }
-}
 
 
 walker generate_docs {
@@ -490,7 +462,6 @@ walker generate_docs {
         } except Exception as e { }
 
 
-        # Optional Mermaid diagrams
         diagrams = {};
         if self.include_diagrams {
             try {
