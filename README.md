@@ -108,33 +108,33 @@ Base URL: `http://localhost:8000` (local development)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                   Streamlit Frontend                      │
-│  • Repository URL input                                   │
-│  • Configuration sidebar (filters, LLM, performance)      │
-│  • Results visualization (tabs, charts, file tree)        │
-│  • Export functionality                                   │
+│                   Streamlit Frontend                     │
+│  • Repository URL input                                  │
+│  • Configuration sidebar (filters, LLM, performance)     │
+│  • Results visualization (tabs, charts, file tree)       │
+│  • Export functionality                                  │
 └────────────────────┬─────────────────────────────────────┘
                      │ HTTP POST /walker/generate_docs
                      ▼
 ┌──────────────────────────────────────────────────────────┐
-│                    JacLang Backend                        │
+│                    JacLang Backend                       │
 │  ┌────────────────────────────────────────────────────┐  │
 │  │  Supervisor (Orchestration)                        │  │
 │  └────────────────────────────────────────────────────┘  │
-│           │                    │                          │
-│           ▼                    ▼                          │
-│  ┌─────────────────┐  ┌─────────────────┐               │
-│  │   RepoMapper    │  │  CodeAnalyzer   │               │
-│  │ • Clone repo    │  │ • Extract       │               │
-│  │ • Scan files    │  │   entities      │               │
-│  │ • Build tree    │  │ • Compute stats │               │
-│  └─────────────────┘  └─────────────────┘               │
-│           │                    │                          │
-│           └────────┬───────────┘                          │
-│                    ▼                                      │
+│           │                    │                         │
+│           ▼                    ▼                         │
+│  ┌─────────────────┐  ┌─────────────────┐                │
+│  │   RepoMapper    │  │  CodeAnalyzer   │                │
+│  │ • Clone repo    │  │ • Extract       │                │
+│  │ • Scan files    │  │   entities      │                │
+│  │ • Build tree    │  │ • Compute stats │                │
+│  └─────────────────┘  └─────────────────┘                │
+│           │                    │                         │
+│           └────────┬───────────┘                         │
+│                    ▼                                     │
 │           ┌─────────────────┐                            │
 │           │    DocGenie     │                            │
-│           │ • LLM    │                            │
+│           │ • LLM           │                            │
 │           │ • Generate docs │                            │
 │           └─────────────────┘                            │
 └──────────────────────────────────────────────────────────┘
