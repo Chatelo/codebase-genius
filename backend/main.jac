@@ -490,7 +490,6 @@ walker generate_docs {
         } except Exception as e { }
 
 
-        # Optional Mermaid diagrams
         diagrams = {};
         if self.include_diagrams {
             try {
