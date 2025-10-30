@@ -9,47 +9,15 @@ Automatically analyze any GitHub repository and generate comprehensive, high-qua
 ![JacLang](https://img.shields.io/badge/jaclang-0.8.10-purple.svg)
 ![Streamlit](https://img.shields.io/badge/streamlit-1.39.0-red.svg)
 
----
 
 ## ✨ Features
 
-### 🔍 Deep Code Analysis
-- **Repository Cloning**: Automatically clone and cache GitHub repositories
-- **File Tree Scanning**: Intelligent directory traversal with configurable filters
-- **Code Entity Extraction**: Parse functions, classes, and modules using tree-sitter
-- **Multi-Language Support**: Python, JavaScript, TypeScript, Java, Go, Rust, and more
-
-### 🤖 AI-Powered Documentation
-- **LLM Integration**: Generate comprehensive documentation using OpenAI GPT models
-- **Context-Aware**: Enriched prompts with repository statistics and API surface
-- **Structured Output**: Well-formatted markdown with sections for overview, structure, API, and more
-
-### 📊 Rich Statistics
-- File counts (total, code, tests, docs, examples)
-- Language breakdown
-- Top directories by code files
-- Top files by size and lines of code
-- Test coverage indicators
-
-### 🎯 Advanced Filtering
-- **Include Paths**: Focus on specific directories (e.g., `src/`, `lib/`)
-- **Include Extensions**: Only analyze certain file types (e.g., `.py`, `.js`)
-- **Include Globs**: Positive pattern matching
-- **Exclude Directories**: Skip build artifacts, caches, etc.
-- **Exclude Globs**: Filter out binaries, images, notebooks
-
-### ⚡ Performance Controls
-- **Max Files**: Limit total files scanned
-- **Max File Size**: Skip large files
-- **Fast Line Counting**: Efficient LOC computation with capped reads
-- **Repository Caching**: Avoid redundant cloning
-
-### 🎨 Beautiful Web UI
-- **Streamlit Interface**: Modern, responsive web application
-- **Interactive Visualizations**: Charts, metrics, expandable file trees
-- **Real-time Feedback**: Progress indicators and error handling
-- **Export**: Download documentation as Markdown
-
+* 🔍 **Smart Analysis** — Parses files, classes, and functions using Tree-sitter
+* 🤖 **AI Documentation** — GPT-powered summaries with repository context
+* 📊 **Code Statistics** — File counts, language breakdowns, and LOC
+* 🎨 **Interactive UI** — Streamlit dashboard with charts and file explorer
+* ⚙️ **Filters & Limits** — Control scan depth, include/exclude paths, size limits
+* 🧭 **Graph APIs** — Explore function calls, subclasses, and dependencies
 ---
 
 ## 🚀 Quick Start
@@ -97,28 +65,9 @@ The UI will open at `http://localhost:8501`
 5. View results in tabs:
    - 📖 **Documentation**: AI-generated markdown
    - 📊 **Statistics**: Metrics and charts
-   - 🌲 **File Tree**: Repository structure
    - 🔧 **Raw Data**: Full API response
+   - 
 6. Download documentation using the **⬇️ Download** button
-
-### API
-
-```python
-import requests
-
-response = requests.post("http://localhost:8000/walker/generate_docs", json={
-    "repo_url": "https://github.com/karpathy/micrograd",
-    "depth": "deep",
-    "use_llm": True,
-    "include_paths": ["micrograd/", "test/"],
-    "top_n": 10
-})
-
-result = response.json()["reports"][0]
-print(result["documentation"])
-```
-
----
 
 ---
 
@@ -232,7 +181,7 @@ Success response
 }
 ```
 
-### cURL examples
+### CURL examples
 ```bash
 # Overview
 curl -sX POST http://localhost:8000/walker/api_ccg_overview \
