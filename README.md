@@ -255,6 +255,11 @@ See real examples in the `outputs/` directory:
 
 Each contains AI-generated documentation, statistics, and Mermaid diagrams.
 
+## Cache & outputs
+
+`backend/.cache/` is a transient analysis cache (cloned repos, file trees, parsed entities, and job progress). It speeds repeated runs, is TTL-based, and is safe to clear — do not commit it.
+
+`outputs/` stores generated artifacts (markdown docs, Mermaid diagrams, and statistics). Commit outputs only when you want a recorded snapshot; otherwise publish from CI and prune stale outputs to avoid disk bloat.
 
 ## 📄 License
 
